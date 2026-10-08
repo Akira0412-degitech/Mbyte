@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mbyte"
+version = "0.1.0"
+description = "Magic-byte insert/replace CLI for CTF / authorized-testing education"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Akira.degitech" }]
+keywords = ["ctf", "magic-bytes", "file-signature", "security", "education"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Environment :: Console",
+    "Intended Audience :: Education",
+    "Topic :: Security",
+]
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+mbyte = "mbyte.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mbyte*"]
