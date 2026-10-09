@@ -62,6 +62,7 @@ mbyte --list-presets
 | `--hex <hexstring>` | 生の 16 進文字列を直接指定（例: `89504e470d0a1a0a`） |
 | `-o`, `--output` | 出力ファイルパス。**省略時は `<input_file>.mbyte`** |
 | `--force` | 入力ファイル自体への上書きを許可（既定では事故防止のため禁止） |
+| `--raw` | （`replace` のみ）skip signature-boundary detection; overwrite exactly `len(hex)` bytes from the start (old/unsafe behavior) |
 | `-v`, `--verbose` | 詳細ログを表示 |
 | `--list-presets` | プリセット一覧を表示して終了 |
 | `--version` | バージョンを表示 |
@@ -89,6 +90,31 @@ mbyte insert --hex 89504e470d0a1a0a notes.txt -o notes.png.txt
 mbyte replace --preset jpeg upload.dat -o upload.jpg
 mbyte replace --hex ffd8ffe0 upload.dat -o upload.jpg
 ```
+
+#### `replace`: signature-boundary detection and `--raw`
+
+By default, `replace` detects the length of the file's **existing** signature
+and splices the new bytes in at that boundary. This is correct regardless of
+whether the new signature is shorter, longer, or the same length as the old
+one, because the cut point is where the old signature actually ends — not how
+long the new one happens to be. This avoids both leftover garbage bytes (new
+signature shorter than old) and corruption of the real data (new signature
+longer than old).
+
+```bash
+# Safe (default): detects the existing signature's real length and splices
+# there, regardless of whether the new one is shorter or longer.
+mbyte replace --preset png broken.png -o fixed.png
+
+# Unsafe/manual: skip detection, overwrite exactly len(hex) bytes from the
+# start. Use this only if the file's current signature is already
+# corrupted/unrecognized, or you know exactly what you're doing.
+mbyte replace --preset png broken.png -o fixed.png --raw
+```
+
+If the current file's signature isn't recognized, `replace` (without `--raw`)
+errors out rather than guessing a splice point — pass `--raw` to force the
+old fixed-length overwrite, or use `insert` if you just want to prepend bytes.
 
 成功すると、判定されたフォーマットと先頭 16 バイトの hexdump が表示されます：
 
@@ -132,7 +158,19 @@ error: hex string has an odd number of digits (3): 'xyz'
 error: input file is too short (2 bytes) to replace 8 bytes; use 'insert' instead
 error: refusing to overwrite the input file; choose a different -o/--output path or pass --force
 error: unknown preset 'bmp'; valid presets: png, gif89a, gif87a, jpeg, pdf, zip
+error: could not recognize the current file's signature, so there is no safe splice point for 'replace'; pass raw=True (CLI: --raw) to force a fixed-length overwrite, or use 'insert' to just prepend bytes
 ```
+
+---
+
+## Known limitations
+
+- **Signature-boundary detection only recognizes the signatures in
+  `_SIGNATURES`** (`mbyte/core.py`). For any other format, `replace` can't find
+  a safe splice point and requires `--raw`.
+- **JPEG detection matches the generic 3-byte `FF D8 FF` prefix.** The 4th byte
+  (JFIF `E0` vs EXIF `E1`, etc.) is treated as part of the trailing data, not
+  the signature, so a `replace` onto a JPEG may not touch that 4th byte.
 
 ---
 

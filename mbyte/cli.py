@@ -10,6 +10,7 @@ from . import __version__
 from .core import (
     MbyteError,
     detect_format,
+    detect_signature_length,
     hexdump,
     insert_magic_bytes,
     replace_magic_bytes,
@@ -59,6 +60,16 @@ def build_parser() -> argparse.ArgumentParser:
         "replace", help="overwrite the first N bytes with magic bytes"
     )
     _add_common_args(replace_p)
+    replace_p.add_argument(
+        "--raw",
+        action="store_true",
+        help=(
+            "skip signature-boundary detection; overwrite exactly len(hex) "
+            "bytes from the start (old/unsafe behavior -- may corrupt data or "
+            "leave garbage bytes if the length doesn't match the file's real "
+            "signature)"
+        ),
+    )
     return parser
 
 
@@ -103,7 +114,17 @@ def run(args: argparse.Namespace) -> int:
     if args.command == "insert":
         insert_magic_bytes(args.input_file, output, hex_bytes)
     else:
-        replace_magic_bytes(args.input_file, output, hex_bytes)
+        raw = getattr(args, "raw", False)
+        if args.verbose and not raw and os.path.exists(args.input_file):
+            with open(args.input_file, "rb") as fh:
+                boundary = detect_signature_length(fh.read(16))
+            if boundary is not None:
+                replacing = len(hex_bytes.strip().replace(" ", "")) // 2
+                print(
+                    f"[*] detected signature length: {boundary} bytes "
+                    f"(replacing with {replacing})"
+                )
+        replace_magic_bytes(args.input_file, output, hex_bytes, raw=raw)
 
     with open(output, "rb") as fh:
         head = fh.read(16)
