@@ -14,7 +14,7 @@ from .core import (
     insert_magic_bytes,
     replace_magic_bytes,
 )
-from .presets import PRESETS, list_presets
+from .presets import PRESET_EXTENSIONS, PRESETS, list_presets
 
 
 def _add_common_args(sub: argparse.ArgumentParser) -> None:
@@ -76,6 +76,10 @@ def _resolve_hex(args: argparse.Namespace) -> str:
 def _resolve_output(args: argparse.Namespace) -> str:
     if args.output:
         output = args.output
+    elif args.preset is not None:
+        # --preset known -> use its natural extension, e.g. shell.php -> shell.php.png
+        ext = PRESET_EXTENSIONS.get(args.preset, "mbyte")
+        output = f"{args.input_file}.{ext}"
     else:
         output = f"{args.input_file}.mbyte"
     if os.path.abspath(output) == os.path.abspath(args.input_file) and not args.force:

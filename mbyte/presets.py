@@ -12,6 +12,17 @@ PRESETS = {
     "zip": "504b0304",
 }
 
+# File extension (without the dot) to use as the default output suffix when
+# --preset is given and -o/--output is omitted.
+PRESET_EXTENSIONS = {
+    "png": "png",
+    "gif89a": "gif",
+    "gif87a": "gif",
+    "jpeg": "jpg",
+    "pdf": "pdf",
+    "zip": "zip",
+}
+
 
 def list_presets() -> str:
     """Return a human-readable table of available presets."""

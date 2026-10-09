@@ -75,3 +75,44 @@ def test_detect_format_png(tmp_path):
     out = str(tmp_path / "out.png")
     insert_magic_bytes(src, out, PRESETS["png"])
     assert detect_format((tmp_path / "out.png").read_bytes()) == "PNG image data"
+
+
+def test_replace_with_shorter_magic_keeps_original_tail_bytes(tmp_path):
+    """replace only overwrites len(hex) bytes; if the new signature is
+    shorter than the one it's replacing, the leftover bytes of the OLD
+    signature are left in place, right after the new one.
+    """
+    # PNG signature is 8 bytes; GIF89a is only 6.
+    src = _write(tmp_path / "in.bin", bytes.fromhex(PRESETS["png"]) + b"REST")
+    out = str(tmp_path / "out.bin")
+    replace_magic_bytes(src, out, PRESETS["gif89a"])
+
+    result = (tmp_path / "out.bin").read_bytes()
+    # first 6 bytes are the new GIF signature
+    assert result[:6] == bytes.fromhex(PRESETS["gif89a"])
+    # the last 2 bytes of the ORIGINAL PNG signature (1a 0a) survive untouched,
+    # followed by the original tail data
+    assert result[6:] == bytes.fromhex(PRESETS["png"])[6:] + b"REST"
+    # detect_format only checks the leading bytes against known signatures,
+    # so this still reads as a valid GIF even though PNG bytes trail it
+    assert detect_format(result) == "GIF image data, version 89a"
+
+
+def test_replace_with_longer_magic_eats_into_following_data(tmp_path):
+    """The inverse case: new signature longer than the one it replaces.
+
+    replace_magic_bytes always overwrites exactly len(new_hex) bytes from
+    the start, so if the new signature is LONGER than the old one, it also
+    overwrites some of the bytes that originally followed the old
+    signature -- not just the signature itself.
+    """
+    # GIF89a signature is 6 bytes; PNG is 8, i.e. 2 bytes longer.
+    src = _write(tmp_path / "in.bin", bytes.fromhex(PRESETS["gif89a"]) + b"REST")
+    out = str(tmp_path / "out.bin")
+    replace_magic_bytes(src, out, PRESETS["png"])
+
+    result = (tmp_path / "out.bin").read_bytes()
+    # the first 2 bytes of "REST" (b"RE") got consumed by the longer PNG
+    # signature, so only b"ST" of the original tail survives
+    assert result == bytes.fromhex(PRESETS["png"]) + b"ST"
+    assert detect_format(result) == "PNG image data"
