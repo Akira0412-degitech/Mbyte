@@ -87,7 +87,7 @@ func ParseHex(hexBytes string) ([]byte, error) {
 	}
 	if len(cleaned)%2 != 0 {
 		return nil, newMbyteErrorf(
-			"hex string has an odd number of digits (%d): %q", len(cleaned), cleaned,
+			"hex string has an odd number of digits (%d): '%s'", len(cleaned), cleaned,
 		)
 	}
 	badSet := map[rune]struct{}{}
@@ -102,8 +102,14 @@ func ParseHex(hexBytes string) ([]byte, error) {
 			bad = append(bad, string(c))
 		}
 		sort.Strings(bad)
+		// Render like Python's repr of a sorted char list, e.g. ['g', 'z'].
+		quoted := make([]string, len(bad))
+		for i, c := range bad {
+			quoted[i] = "'" + c + "'"
+		}
 		return nil, newMbyteErrorf(
-			"hex string contains invalid characters %v: %q", bad, cleaned,
+			"hex string contains invalid characters [%s]: '%s'",
+			strings.Join(quoted, ", "), cleaned,
 		)
 	}
 	b, err := hex.DecodeString(cleaned)
@@ -114,11 +120,18 @@ func ParseHex(hexBytes string) ([]byte, error) {
 	return b, nil
 }
 
+// notFoundError mirrors Python's FileNotFoundError message ("input file not
+// found: <path>") while still satisfying errors.Is(err, os.ErrNotExist).
+type notFoundError struct{ path string }
+
+func (e *notFoundError) Error() string { return "input file not found: " + e.path }
+func (e *notFoundError) Unwrap() error { return os.ErrNotExist }
+
 func readInput(inputPath string) ([]byte, error) {
 	info, err := os.Stat(inputPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("input file not found: %s: %w", inputPath, os.ErrNotExist)
+			return nil, &notFoundError{path: inputPath}
 		}
 		return nil, err
 	}
@@ -179,7 +192,7 @@ func ReplaceMagicBytes(inputPath, outputPath string, magic []byte, raw bool) err
 		if !ok {
 			return newMbyteErrorf(
 				"could not recognize the current file's signature, so there is " +
-					"no safe splice point for 'replace'; pass raw=true (CLI: --raw) " +
+					"no safe splice point for 'replace'; pass raw=True (CLI: --raw) " +
 					"to force a fixed-length overwrite, or use 'insert' to just " +
 					"prepend bytes",
 			)
