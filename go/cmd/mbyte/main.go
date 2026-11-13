@@ -36,6 +36,10 @@ func runCLI() int {
 		// batch ran but some files failed; the per-file errors are already in
 		// the table/JSON output, so just signal failure via the exit code.
 		return 1
+	case errors.Is(err, mbyte.ErrCheckFailed):
+		// `check` found a structural failure; the report is already printed, so
+		// just use the exit code to signal "invalid".
+		return 1
 	case isRuntimeError(err):
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 1
@@ -90,7 +94,24 @@ func newRootCmd() *cobra.Command {
 
 	root.AddCommand(newActionCmd("insert", "prepend magic bytes (keeps original content)", false))
 	root.AddCommand(newActionCmd("replace", "overwrite the first N bytes with magic bytes", true))
+	root.AddCommand(newCheckCmd())
 	return root
+}
+
+// newCheckCmd builds the `check` subcommand: report the signature match and the
+// structural validity (does it actually decode?) of a file.
+func newCheckCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:           "check",
+		Short:         "report a file's signature match and structural validity",
+		Args:          cobra.ExactArgs(1),
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			streams := mbyte.IO{Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr()}
+			return mbyte.RunCheck(args[0], streams)
+		},
+	}
 }
 
 // newActionCmd builds the insert or replace subcommand. withRaw adds the
@@ -113,6 +134,7 @@ func newActionCmd(name, short string, withRaw bool) *cobra.Command {
 			opts.DryRun, _ = cmd.Flags().GetBool("dry-run")
 			opts.Recursive, _ = cmd.Flags().GetBool("recursive")
 			opts.JSON, _ = cmd.Flags().GetBool("json")
+			opts.NoCheck, _ = cmd.Flags().GetBool("no-check")
 			if withRaw {
 				opts.Raw, _ = cmd.Flags().GetBool("raw")
 			}
@@ -138,6 +160,7 @@ func newActionCmd(name, short string, withRaw bool) *cobra.Command {
 	cmd.Flags().Bool("dry-run", false, "show the preview and exit without writing")
 	cmd.Flags().BoolP("recursive", "r", false, "when input is a directory, recurse into subdirectories")
 	cmd.Flags().Bool("json", false, "when input is a directory, print results as a JSON array")
+	cmd.Flags().Bool("no-check", false, "skip the post-write structural (decode) check")
 	if withRaw {
 		cmd.Flags().Bool("raw", false,
 			"skip signature-boundary detection; overwrite exactly len(hex) bytes from the start "+

@@ -29,6 +29,7 @@ type RunOptions struct {
 	DryRun    bool // --dry-run: show the preview and exit without writing
 	Recursive bool // -r/--recursive: recurse when the input is a directory (batch)
 	JSON      bool // --json: print batch results as a JSON array
+	NoCheck   bool // --no-check: skip the post-write structural check
 }
 
 // IO bundles the streams and interactivity for a run so output and prompting
@@ -280,5 +281,12 @@ func Run(opts RunOptions, s IO) error {
 	fmt.Fprintf(s.Out, "[+] wrote %s\n", output)
 	fmt.Fprintf(s.Out, "[+] detected format: %s\n", DetectFormat(head))
 	fmt.Fprintln(s.Out, Hexdump(head, 16))
+
+	// Post-write structural check (Step 6): prove whether the file is actually
+	// parseable as its claimed format, not just signature-matching. Goes to
+	// stderr so stdout stays the clean result; disabled by --no-check.
+	if !opts.NoCheck {
+		writeAutoCheck(s.Err, p.outData)
+	}
 	return nil
 }
