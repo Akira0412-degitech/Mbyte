@@ -10,6 +10,7 @@ package mbyte
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -161,6 +162,68 @@ func readInput(inputPath string) ([]byte, error) {
 	return os.ReadFile(inputPath)
 }
 
+// HashPayload returns the lowercase hex SHA-256 of data[boundary:], i.e. the
+// bytes after a leading signature of the given length. boundary is clamped to
+// [0, len(data)]. This is the "is the payload intact?" fingerprint used by the
+// insert/replace preview: hashing from the signature boundary onward lets a
+// before/after comparison ignore the signature bytes that are meant to change.
+func HashPayload(data []byte, boundary int) string {
+	if boundary < 0 {
+		boundary = 0
+	}
+	if boundary > len(data) {
+		boundary = len(data)
+	}
+	sum := sha256.Sum256(data[boundary:])
+	return hex.EncodeToString(sum[:])
+}
+
+// buildInserted returns magic followed by original (the insert result) without
+// touching the filesystem, so callers can preview or hash it before writing.
+func buildInserted(original, magic []byte) []byte {
+	out := make([]byte, 0, len(magic)+len(original))
+	out = append(out, magic...)
+	out = append(out, original...)
+	return out
+}
+
+// buildReplaced returns the replace result bytes and the detected OLD signature
+// length (boundaryOld), or -1 if the current signature is unrecognized. It is
+// the pure, filesystem-free core of ReplaceMagicBytes; see that function's doc
+// for the raw vs boundary-detection semantics.
+func buildReplaced(original, magic []byte, raw bool) (out []byte, boundaryOld int, err error) {
+	boundaryOld = -1
+	if b, ok := DetectSignatureLength(original); ok {
+		boundaryOld = b
+	}
+
+	if raw {
+		if len(original) < len(magic) {
+			return nil, boundaryOld, newMbyteErrorf(
+				"input file is too short (%d bytes) to replace %d bytes; use 'insert' instead",
+				len(original), len(magic),
+			)
+		}
+		out = make([]byte, 0, len(original))
+		out = append(out, magic...)
+		out = append(out, original[len(magic):]...)
+		return out, boundaryOld, nil
+	}
+
+	if boundaryOld < 0 {
+		return nil, boundaryOld, newMbyteErrorf(
+			"could not recognize the current file's signature, so there is " +
+				"no safe splice point for 'replace'; pass raw=True (CLI: --raw) " +
+				"to force a fixed-length overwrite, or use 'insert' to just " +
+				"prepend bytes",
+		)
+	}
+	out = make([]byte, 0, len(magic)+len(original)-boundaryOld)
+	out = append(out, magic...)
+	out = append(out, original[boundaryOld:]...)
+	return out, boundaryOld, nil
+}
+
 // InsertMagicBytes prepends magic to the input file, writing the result to
 // outputPath. The input file is left unchanged.
 func InsertMagicBytes(inputPath, outputPath string, magic []byte) error {
@@ -168,10 +231,7 @@ func InsertMagicBytes(inputPath, outputPath string, magic []byte) error {
 	if err != nil {
 		return err
 	}
-	out := make([]byte, 0, len(magic)+len(original))
-	out = append(out, magic...)
-	out = append(out, original...)
-	return os.WriteFile(outputPath, out, 0o644)
+	return os.WriteFile(outputPath, buildInserted(original, magic), 0o644)
 }
 
 // ReplaceMagicBytes replaces the input file's leading signature with magic.
@@ -195,33 +255,10 @@ func ReplaceMagicBytes(inputPath, outputPath string, magic []byte, raw bool) err
 	if err != nil {
 		return err
 	}
-
-	var output []byte
-	if raw {
-		if len(original) < len(magic) {
-			return newMbyteErrorf(
-				"input file is too short (%d bytes) to replace %d bytes; use 'insert' instead",
-				len(original), len(magic),
-			)
-		}
-		output = make([]byte, 0, len(original))
-		output = append(output, magic...)
-		output = append(output, original[len(magic):]...)
-	} else {
-		boundary, ok := DetectSignatureLength(original)
-		if !ok {
-			return newMbyteErrorf(
-				"could not recognize the current file's signature, so there is " +
-					"no safe splice point for 'replace'; pass raw=True (CLI: --raw) " +
-					"to force a fixed-length overwrite, or use 'insert' to just " +
-					"prepend bytes",
-			)
-		}
-		output = make([]byte, 0, len(magic)+len(original)-boundary)
-		output = append(output, magic...)
-		output = append(output, original[boundary:]...)
+	output, _, err := buildReplaced(original, magic, raw)
+	if err != nil {
+		return err
 	}
-
 	return os.WriteFile(outputPath, output, 0o644)
 }
 
