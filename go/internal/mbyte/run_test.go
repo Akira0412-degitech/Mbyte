@@ -2,6 +2,7 @@ package mbyte
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,7 +121,8 @@ func TestRunInsertOutput(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := RunOptions{Command: "insert", InputFile: in, Output: out, Preset: "png"}
-	if err := Run(opts, &buf); err != nil {
+	// Non-interactive: no prompt, results on Out.
+	if err := Run(opts, IO{Out: &buf, Err: io.Discard}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
