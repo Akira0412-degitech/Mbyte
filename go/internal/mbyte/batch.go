@@ -28,6 +28,7 @@ type BatchResult struct {
 	OK             bool   `json:"ok"`
 	DetectedFormat string `json:"detected_format,omitempty"`
 	PayloadStatus  string `json:"payload_status,omitempty"` // MATCH / MISMATCH / UNVERIFIED
+	Structure      string `json:"structure,omitempty"`      // PASS / FAIL / SKIP (Step 6)
 	Error          string `json:"error,omitempty"`
 }
 
@@ -116,6 +117,11 @@ func processFile(opts RunOptions, magic []byte, inputFile, output string, dryRun
 	res.OK = true
 	res.DetectedFormat = DetectFormat(head)
 	res.PayloadStatus = p.statusCode
+	// Step 6: structural check of the full output (unless --no-check).
+	if !opts.NoCheck {
+		status, _, _ := CheckBytes(p.outData)
+		res.Structure = status.String()
+	}
 	return res
 }
 
@@ -196,8 +202,8 @@ func writeBatchTable(w io.Writer, results []BatchResult, dryRun bool) {
 	}
 
 	// Column widths.
-	hStatus, hInput, hFormat, hPayload := "STATUS", "INPUT", "FORMAT", "PAYLOAD"
-	wStatus, wInput, wFormat, wPayload := len(hStatus), len(hInput), len(hFormat), len(hPayload)
+	hStatus, hInput, hFormat, hPayload, hStruct := "STATUS", "INPUT", "FORMAT", "PAYLOAD", "STRUCT"
+	wStatus, wInput, wFormat, wPayload, wStruct := len(hStatus), len(hInput), len(hFormat), len(hPayload), len(hStruct)
 	statusOf := func(r BatchResult) string {
 		if r.OK {
 			return "ok"
@@ -205,24 +211,35 @@ func writeBatchTable(w io.Writer, results []BatchResult, dryRun bool) {
 		return "FAIL"
 	}
 	for _, r := range results {
-		wStatus = max(wStatus, len(statusOf(r)))
-		wInput = max(wInput, len(filepath.Base(r.Input)))
-		wFormat = max(wFormat, len(r.DetectedFormat))
-		wPayload = max(wPayload, len(r.PayloadStatus))
+		wStatus = maxInt(wStatus, len(statusOf(r)))
+		wInput = maxInt(wInput, len(filepath.Base(r.Input)))
+		wFormat = maxInt(wFormat, len(r.DetectedFormat))
+		wPayload = maxInt(wPayload, len(r.PayloadStatus))
+		wStruct = maxInt(wStruct, len(r.Structure))
 	}
 
-	fmt.Fprintf(w, "  %s  %s  %s  %s  %s\n",
-		pad(hStatus, wStatus), pad(hInput, wInput), pad(hFormat, wFormat), pad(hPayload, wPayload), "OUTPUT / ERROR")
+	fmt.Fprintf(w, "  %s  %s  %s  %s  %s  %s\n",
+		pad(hStatus, wStatus), pad(hInput, wInput), pad(hFormat, wFormat),
+		pad(hPayload, wPayload), pad(hStruct, wStruct), "OUTPUT / ERROR")
 	for _, r := range results {
 		last := r.Output
 		if !r.OK {
 			last = "error: " + r.Error
 		}
-		fmt.Fprintf(w, "  %s  %s  %s  %s  %s\n",
+		fmt.Fprintf(w, "  %s  %s  %s  %s  %s  %s\n",
 			pad(statusOf(r), wStatus),
 			pad(filepath.Base(r.Input), wInput),
 			pad(r.DetectedFormat, wFormat),
 			pad(r.PayloadStatus, wPayload),
+			pad(r.Structure, wStruct),
 			last)
 	}
+}
+
+// maxInt returns the larger of two ints.
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
