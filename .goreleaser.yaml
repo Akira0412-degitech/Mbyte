@@ -1,0 +1,48 @@
+# goreleaser config for the Go implementation (lives in go/).
+# Release is triggered by pushing a tag, e.g. `git tag v0.1.0 && git push --tags`;
+# see .github/workflows/release.yml. Validate locally with `goreleaser check`.
+version: 2
+
+project_name: mbyte
+
+builds:
+  - id: mbyte
+    dir: go            # the Go module lives in the go/ subdirectory
+    main: ./cmd/mbyte
+    binary: mbyte
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: mbyte
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+release:
+  draft: false
+  prerelease: auto
