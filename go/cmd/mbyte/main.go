@@ -32,6 +32,10 @@ func runCLI() int {
 	case errors.Is(err, errNoCommand):
 		// help was already printed by the root RunE
 		return 1
+	case errors.Is(err, mbyte.ErrBatchFailures):
+		// batch ran but some files failed; the per-file errors are already in
+		// the table/JSON output, so just signal failure via the exit code.
+		return 1
 	case isRuntimeError(err):
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 1
@@ -107,6 +111,8 @@ func newActionCmd(name, short string, withRaw bool) *cobra.Command {
 			opts.Verbose, _ = cmd.Flags().GetBool("verbose")
 			opts.Yes, _ = cmd.Flags().GetBool("yes")
 			opts.DryRun, _ = cmd.Flags().GetBool("dry-run")
+			opts.Recursive, _ = cmd.Flags().GetBool("recursive")
+			opts.JSON, _ = cmd.Flags().GetBool("json")
 			if withRaw {
 				opts.Raw, _ = cmd.Flags().GetBool("raw")
 			}
@@ -119,7 +125,7 @@ func newActionCmd(name, short string, withRaw bool) *cobra.Command {
 				// interactive usage keeps working unchanged.
 				Interactive: isTerminal(os.Stdin),
 			}
-			return mbyte.Run(opts, streams)
+			return mbyte.Dispatch(opts, streams)
 		},
 	}
 
@@ -130,6 +136,8 @@ func newActionCmd(name, short string, withRaw bool) *cobra.Command {
 	cmd.Flags().BoolP("verbose", "v", false, "print detailed logs")
 	cmd.Flags().BoolP("yes", "y", false, "skip the confirmation prompt (assume yes)")
 	cmd.Flags().Bool("dry-run", false, "show the preview and exit without writing")
+	cmd.Flags().BoolP("recursive", "r", false, "when input is a directory, recurse into subdirectories")
+	cmd.Flags().Bool("json", false, "when input is a directory, print results as a JSON array")
 	if withRaw {
 		cmd.Flags().Bool("raw", false,
 			"skip signature-boundary detection; overwrite exactly len(hex) bytes from the start "+
