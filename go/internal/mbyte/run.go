@@ -27,6 +27,8 @@ type RunOptions struct {
 	Raw       bool // replace only
 	Yes       bool // -y/--yes: skip the confirmation prompt
 	DryRun    bool // --dry-run: show the preview and exit without writing
+	Recursive bool // -r/--recursive: recurse when the input is a directory (batch)
+	JSON      bool // --json: print batch results as a JSON array
 }
 
 // IO bundles the streams and interactivity for a run so output and prompting
@@ -106,7 +108,8 @@ type preview struct {
 	boundaryNew int    // new signature length (== len(magic))
 	hashBefore string // "" if the before-payload is unknown (raw + unrecognized)
 	hashAfter  string
-	status     string // "MATCH", "MISMATCH (...)", or "UNVERIFIED (...)"
+	status     string // full text, e.g. "MISMATCH (payload shifted by +4 bytes)"
+	statusCode string // bare token: "MATCH", "MISMATCH", or "UNVERIFIED"
 	ok         bool   // true for MATCH
 }
 
@@ -147,12 +150,15 @@ func buildPreview(opts RunOptions, output string, magic []byte, original []byte)
 	case p.boundaryOld < 0:
 		// Only reachable for replace --raw on an unrecognized current signature:
 		// we cannot locate the real payload start, so we cannot verify it.
+		p.statusCode = "UNVERIFIED"
 		p.status = "UNVERIFIED (current signature unrecognized; cannot locate payload start)"
 	case p.hashBefore == p.hashAfter:
+		p.statusCode = "MATCH"
 		p.status = "MATCH"
 		p.ok = true
 	default:
 		shift := p.boundaryOld - len(magic)
+		p.statusCode = "MISMATCH"
 		p.status = fmt.Sprintf("MISMATCH (payload shifted by %+d bytes)", shift)
 	}
 	return p, nil
