@@ -29,10 +29,13 @@ func TestResolveHexRawPassthrough(t *testing.T) {
 }
 
 func TestResolveHexUnknownPreset(t *testing.T) {
+	// bmp is detection-only (not an insert preset), so it is still unknown here.
 	_, err := ResolveHex("bmp", "")
 	requireMbyteError(t, err)
-	// error lists the valid presets in declaration order, like cli.py
-	if !strings.Contains(err.Error(), "valid presets: png, gif89a, gif87a, jpeg, pdf, zip") {
+	// error lists the valid presets in table order, like cli.py (now 12 after
+	// the Step 3 unification added elf/pe/gzip/7z/rar/javaclass).
+	if !strings.Contains(err.Error(),
+		"valid presets: png, gif89a, gif87a, jpeg, pdf, zip, elf, pe, gzip, 7z, rar, javaclass") {
 		t.Fatalf("unexpected message: %v", err)
 	}
 }
@@ -83,17 +86,24 @@ func TestResolveOutputOverwriteAllowedWithForce(t *testing.T) {
 }
 
 func TestListPresetsExactFormat(t *testing.T) {
+	// NAME column is width-aligned to the longest name, now "javaclass" (9).
 	want := strings.Join([]string{
 		"Available presets:",
 		"",
-		"  NAME    HEX",
-		"  ------  ----------------",
-		"  png     89504e470d0a1a0a",
-		"  gif89a  474946383961",
-		"  gif87a  474946383761",
-		"  jpeg    ffd8ffe0",
-		"  pdf     25504446",
-		"  zip     504b0304",
+		"  NAME       HEX",
+		"  ---------  ----------------",
+		"  png        89504e470d0a1a0a",
+		"  gif89a     474946383961",
+		"  gif87a     474946383761",
+		"  jpeg       ffd8ffe0",
+		"  pdf        25504446",
+		"  zip        504b0304",
+		"  elf        7f454c46",
+		"  pe         4d5a",
+		"  gzip       1f8b",
+		"  7z         377abcaf271c",
+		"  rar        52617221",
+		"  javaclass  cafebabe",
 	}, "\n")
 	if got := ListPresets(); got != want {
 		t.Fatalf("ListPresets mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)

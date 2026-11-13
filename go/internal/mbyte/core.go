@@ -31,12 +31,26 @@ func newMbyteErrorf(format string, a ...any) *MbyteError {
 	return &MbyteError{Msg: fmt.Sprintf(format, a...)}
 }
 
-// Signature maps a magic-byte prefix to a human-readable format name.
-// (Step 3 will extend this struct with PresetName/Ext; not added yet so the
-// port stays 1:1 with core.py.)
+// Signature is one entry in the unified detection/preset table. The detection
+// half (Hex/Name) is the faithful port of core.py's _SIGNATURES; the preset
+// half (PresetName/PresetHex/Ext) is the Step 3 unification that lets a single
+// table drive both `detect_format` and the `--preset` list (replacing Python's
+// separate PRESETS dict).
 type Signature struct {
-	Hex  []byte
-	Name string
+	Hex  []byte // detection prefix; longest-match-wins target
+	Name string // human-readable name detect_format returns
+
+	// PresetName is the --preset name this entry is exposed under, or "" if the
+	// signature is detection-only (e.g. BMP) and not an insert preset.
+	PresetName string
+	// PresetHex is the hex an insert writes for this preset. "" means "same as
+	// Hex" (hex.EncodeToString(Hex)). It exists because a preset's written
+	// bytes can differ from the detection prefix: jpeg writes the 4-byte
+	// ffd8ffe0 (APP0/JFIF) while detection matches the generic 3-byte ffd8ff.
+	PresetHex string
+	// Ext is the default output extension (no dot) used when --preset is given
+	// and -o/--output is omitted; only meaningful when PresetName != "".
+	Ext string
 }
 
 // mustHex decodes a signature literal at init time; the inputs are constants,
@@ -53,25 +67,31 @@ func mustHex(s string) []byte {
 // (file(1)-ish), longest match wins. Same order and names as core.py's
 // _SIGNATURES.
 var signatures = []Signature{
-	{mustHex("89504e470d0a1a0a"), "PNG image data"},
-	{mustHex("474946383961"), "GIF image data, version 89a"},
-	{mustHex("474946383761"), "GIF image data, version 87a"},
+	{Hex: mustHex("89504e470d0a1a0a"), Name: "PNG image data", PresetName: "png", Ext: "png"},
+	{Hex: mustHex("474946383961"), Name: "GIF image data, version 89a", PresetName: "gif89a", Ext: "gif"},
+	{Hex: mustHex("474946383761"), Name: "GIF image data, version 87a", PresetName: "gif87a", Ext: "gif"},
 	// JPEG is matched on the generic 3-byte FF D8 FF prefix so that both JFIF
 	// (ffd8ffe0) and EXIF (ffd8ffe1) variants are recognized. This means the
 	// detected JPEG boundary is intentionally 3 bytes -- one byte short of the
 	// 4-byte APP0/APP1 marker that the "jpeg" preset writes -- so a `replace`
 	// onto a JPEG may leave that 4th, marker-ambiguous byte behind. Documented
 	// limitation, not a bug: we only ever claim the 3 bytes we actually know.
-	{mustHex("ffd8ff"), "JPEG image data"},
-	{mustHex("25504446"), "PDF document"},
-	{mustHex("504b0304"), "Zip archive data"},
-	{mustHex("424d"), "PC bitmap (BMP) image data"},
-	{mustHex("7f454c46"), "ELF executable"},
-	{mustHex("4d5a"), "PE32 executable (MS-DOS MZ)"},
-	{mustHex("1f8b"), "gzip compressed data"},
-	{mustHex("377abcaf271c"), "7-zip archive data"},
-	{mustHex("52617221"), "RAR archive data"},
-	{mustHex("cafebabe"), "Java class data"},
+	// PresetHex therefore differs from Hex: the preset writes the full ffd8ffe0.
+	{Hex: mustHex("ffd8ff"), Name: "JPEG image data", PresetName: "jpeg", PresetHex: "ffd8ffe0", Ext: "jpg"},
+	{Hex: mustHex("25504446"), Name: "PDF document", PresetName: "pdf", Ext: "pdf"},
+	{Hex: mustHex("504b0304"), Name: "Zip archive data", PresetName: "zip", Ext: "zip"},
+	// BMP stays detection-only: no PresetName, so it is not offered as an
+	// insert preset (per Step 3 scope -- the doc lists only the six below).
+	{Hex: mustHex("424d"), Name: "PC bitmap (BMP) image data"},
+	// Step 3 additions: formats that were detection-only are now also exposed
+	// as insert presets. Their PresetHex equals Hex (PresetHex left ""), so an
+	// insert followed by detect_format round-trips to the same Name.
+	{Hex: mustHex("7f454c46"), Name: "ELF executable", PresetName: "elf", Ext: "elf"},
+	{Hex: mustHex("4d5a"), Name: "PE32 executable (MS-DOS MZ)", PresetName: "pe", Ext: "exe"},
+	{Hex: mustHex("1f8b"), Name: "gzip compressed data", PresetName: "gzip", Ext: "gz"},
+	{Hex: mustHex("377abcaf271c"), Name: "7-zip archive data", PresetName: "7z", Ext: "7z"},
+	{Hex: mustHex("52617221"), Name: "RAR archive data", PresetName: "rar", Ext: "rar"},
+	{Hex: mustHex("cafebabe"), Name: "Java class data", PresetName: "javaclass", Ext: "class"},
 }
 
 const hexDigits = "0123456789abcdef"

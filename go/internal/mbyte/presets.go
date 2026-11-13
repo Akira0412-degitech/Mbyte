@@ -1,86 +1,87 @@
 package mbyte
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strings"
 )
 
-// This is a faithful port of mbyte/presets.py: named insert presets and their
-// default output extensions. Step 3 will unify these into the detection
-// signature table; until then they live here to keep the cli.py port 1:1.
+// Step 3 unified the insert presets into the single `signatures` table in
+// core.go (replacing presets.py's separate PRESETS / PRESET_EXTENSIONS dicts).
+// The helpers below are now a thin projection over that table: an entry is an
+// insert preset iff PresetName != "". This keeps detection and preset data in
+// one source of truth so they can't drift apart.
 
-// preset is one named magic-byte preset (name -> hex string).
-type preset struct {
-	Name string
-	Hex  string
-}
-
-// presetsOrdered preserves the Python dict's insertion order so that
-// ListPresets and the "valid presets: ..." error list match byte-for-byte.
-var presetsOrdered = []preset{
-	{"png", "89504e470d0a1a0a"},
-	{"gif89a", "474946383961"},
-	{"gif87a", "474946383761"},
-	{"jpeg", "ffd8ffe0"},
-	{"pdf", "25504446"},
-	{"zip", "504b0304"},
-}
-
-// presetExtensions maps a preset name to the default output suffix (no dot)
-// used when --preset is given and -o/--output is omitted.
-var presetExtensions = map[string]string{
-	"png":    "png",
-	"gif89a": "gif",
-	"gif87a": "gif",
-	"jpeg":   "jpg",
-	"pdf":    "pdf",
-	"zip":    "zip",
-}
-
-// PresetHex returns the hex string for a preset name, and ok=false if unknown.
-func PresetHex(name string) (hex string, ok bool) {
-	for _, p := range presetsOrdered {
-		if p.Name == name {
-			return p.Hex, true
+// PresetHex returns the hex string an insert writes for a preset name, and
+// ok=false if the name is unknown. It is the entry's PresetHex, or the hex of
+// its detection prefix when PresetHex is unset (they match for every preset
+// except jpeg).
+func PresetHex(name string) (hexStr string, ok bool) {
+	for _, s := range signatures {
+		if s.PresetName == name {
+			if s.PresetHex != "" {
+				return s.PresetHex, true
+			}
+			return hex.EncodeToString(s.Hex), true
 		}
 	}
 	return "", false
 }
 
 // PresetExtension returns the default output extension for a preset name, and
-// ok=false if the name has no mapping.
+// ok=false if the name is unknown (or the entry has no extension set).
 func PresetExtension(name string) (ext string, ok bool) {
-	ext, ok = presetExtensions[name]
-	return ext, ok
+	for _, s := range signatures {
+		if s.PresetName == name {
+			return s.Ext, s.Ext != ""
+		}
+	}
+	return "", false
 }
 
-// presetNames returns the preset names in declaration order (used for the
-// unknown-preset error message, matching Python's ", ".join(PRESETS)).
+// presetNames returns the preset names in table order (used for the
+// unknown-preset error message, mirroring Python's ", ".join(PRESETS)).
 func presetNames() []string {
-	names := make([]string, len(presetsOrdered))
-	for i, p := range presetsOrdered {
-		names[i] = p.Name
+	var names []string
+	for _, s := range signatures {
+		if s.PresetName != "" {
+			names = append(names, s.PresetName)
+		}
 	}
 	return names
 }
 
-// ListPresets returns a human-readable table of available presets, byte-for-byte
-// identical to Python's presets.list_presets().
+// ListPresets returns a human-readable table of available presets. Only entries
+// with a PresetName (insert presets) are listed; detection-only signatures such
+// as BMP are excluded. Format matches Python's presets.list_presets(): the NAME
+// column is width-aligned to the longest name and the HEX column shows the hex
+// an insert actually writes.
 func ListPresets() string {
+	type row struct{ name, hex string }
+	var rows []row
 	width := 0
-	for _, p := range presetsOrdered {
-		if len(p.Name) > width {
-			width = len(p.Name)
+	for _, s := range signatures {
+		if s.PresetName == "" {
+			continue
+		}
+		h := s.PresetHex
+		if h == "" {
+			h = hex.EncodeToString(s.Hex)
+		}
+		rows = append(rows, row{s.PresetName, h})
+		if len(s.PresetName) > width {
+			width = len(s.PresetName)
 		}
 	}
+
 	lines := []string{
 		"Available presets:",
 		"",
 		fmt.Sprintf("  %s  HEX", pad("NAME", width)),
 		fmt.Sprintf("  %s  %s", strings.Repeat("-", width), strings.Repeat("-", 16)),
 	}
-	for _, p := range presetsOrdered {
-		lines = append(lines, fmt.Sprintf("  %s  %s", pad(p.Name, width), p.Hex))
+	for _, r := range rows {
+		lines = append(lines, fmt.Sprintf("  %s  %s", pad(r.name, width), r.hex))
 	}
 	return strings.Join(lines, "\n")
 }
