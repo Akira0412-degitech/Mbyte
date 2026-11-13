@@ -111,6 +111,20 @@ func TestListPresetsExactFormat(t *testing.T) {
 	}
 }
 
+// TestRunInvalidHexErrors is the Go analog of Python's
+// test_invalid_hex_in_insert_raises: because the Go core takes magic []byte,
+// hex parsing lives in Run, so invalid hex reaching an insert errors there.
+func TestRunInvalidHexErrors(t *testing.T) {
+	dir := t.TempDir()
+	in := filepath.Join(dir, "in.bin")
+	if err := os.WriteFile(in, []byte("data"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	opts := RunOptions{Command: "insert", InputFile: in, Output: filepath.Join(dir, "out.bin"), Hex: "xyz"}
+	err := Run(opts, IO{Out: io.Discard, Err: io.Discard})
+	requireMbyteError(t, err)
+}
+
 func TestRunInsertOutput(t *testing.T) {
 	dir := t.TempDir()
 	in := filepath.Join(dir, "payload.bin")
