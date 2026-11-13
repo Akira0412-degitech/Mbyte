@@ -25,6 +25,9 @@ jobs:
   python:
     name: Python (pytest, reference impl)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: legacy-python
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
