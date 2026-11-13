@@ -50,6 +50,17 @@ func isRuntimeError(err error) bool {
 	return errors.As(err, &me) || errors.Is(err, os.ErrNotExist)
 }
 
+// isTerminal reports whether f is attached to an interactive terminal, using
+// only the standard library (no x/term dependency): a character device is a
+// TTY, while a pipe or redirected file is not.
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
 func newRootCmd() *cobra.Command {
 	var listPresets bool
 
@@ -94,10 +105,21 @@ func newActionCmd(name, short string, withRaw bool) *cobra.Command {
 			opts.Hex, _ = cmd.Flags().GetString("hex")
 			opts.Force, _ = cmd.Flags().GetBool("force")
 			opts.Verbose, _ = cmd.Flags().GetBool("verbose")
+			opts.Yes, _ = cmd.Flags().GetBool("yes")
+			opts.DryRun, _ = cmd.Flags().GetBool("dry-run")
 			if withRaw {
 				opts.Raw, _ = cmd.Flags().GetBool("raw")
 			}
-			return mbyte.Run(opts, cmd.OutOrStdout())
+			streams := mbyte.IO{
+				Out: cmd.OutOrStdout(),
+				Err: cmd.ErrOrStderr(),
+				In:  cmd.InOrStdin(),
+				// Only prompt when stdin is a real terminal; piped/scripted
+				// (non-TTY) runs proceed without asking, so existing non-
+				// interactive usage keeps working unchanged.
+				Interactive: isTerminal(os.Stdin),
+			}
+			return mbyte.Run(opts, streams)
 		},
 	}
 
@@ -106,6 +128,8 @@ func newActionCmd(name, short string, withRaw bool) *cobra.Command {
 	cmd.Flags().String("hex", "", "raw hex string, e.g. 89504e47")
 	cmd.Flags().Bool("force", false, "allow writing over the input file (disabled by default)")
 	cmd.Flags().BoolP("verbose", "v", false, "print detailed logs")
+	cmd.Flags().BoolP("yes", "y", false, "skip the confirmation prompt (assume yes)")
+	cmd.Flags().Bool("dry-run", false, "show the preview and exit without writing")
 	if withRaw {
 		cmd.Flags().Bool("raw", false,
 			"skip signature-boundary detection; overwrite exactly len(hex) bytes from the start "+

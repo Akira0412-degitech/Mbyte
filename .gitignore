@@ -6,3 +6,6 @@ venv/
 .venv/
 build/
 dist/
+
+# Go build temp (redirected GOTMPDIR to avoid temp-dir exec policy)
+.gotmp/
