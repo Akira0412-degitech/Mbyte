@@ -3,106 +3,73 @@
 [English](README.md) | **日本語**
 
 `mbyte` は、ファイル先頭のマジックバイト（ファイルシグネチャ）を **挿入（insert）** または
-**置換（replace）** するための、小さな **Go 製** CLI ツールです。
+**置換（replace）** する小さな **Go 製** CLI です。ファイルアップロードの種別検証がどう行われ、
+マジックバイト偽装でどう回避されうるかを、**CTF や許可された環境でのセキュリティ検証**を通じて
+学ぶための教育用ツールです。
 
-ファイルアップロード時のファイル種別検証がどのように行われ、どのように回避されうるか
-（マジックバイト偽装）を **CTF や、許可された環境でのセキュリティ検証** を通じて学ぶための
-教育用ツールです。
+やることは単純（先頭にバイト列を足す／先頭 N バイトを上書き）ですが、それを **安全に** 行えます
+— 名前付きプリセット、入力検証、SHA-256 によるペイロード確認、そして「署名が合っているだけ」と
+「実際にその形式としてパースできる」の差を示す構造検証（`check`）を備えています。
 
-やっていること自体は単純で、「先頭にバイト列を足す」か「先頭の N バイトを上書きする」だけです。
-価値は、その単純な操作を **安全に・わかりやすく** 行える点にあります — 名前付きプリセット、
-入力バリデーション、処理後に `file` / `xxd` 相当の結果を表示する確認機能、ペイロードが無傷か
-を確かめる SHA-256 比較、そして「署名が合っているだけ」と「実際にその形式としてパースできる」
-の違いを示す構造検証（`check`）を備えています。
-
-> このリポジトリは元々 Python で実装され、現在 Go へ移植済みです。元の Python 実装は参照用として
-> [`legacy-python/`](legacy-python/) に保存しています（削除していません）。
+> 元々 Python 実装で、現在は Go へ移植済みです。Python 版は参照用として
+> [`legacy-python/`](legacy-python/) に残しています。
 
 ---
 
 ## insert と replace の違い
 
-この 2 つは似ていますが結果がまったく異なります。用途に合わせて選んでください。
+| サブコマンド | 動作 | ファイルサイズ | 用途 |
+| ------------ | ---- | -------------- | ---- |
+| `insert`  | 先頭にバイト列を追加（元の中身は全部残る） | 増える | 署名さえ合格すれば中身は不問、という検証の回避 |
+| `replace` | 先頭 N バイトを上書き（残りは保持） | 変わらない | 先頭数バイトだけを見る検証の回避 |
 
-| サブコマンド | 動作 | ファイルサイズ | 主な用途 |
-| ------------ | ---- | -------------- | -------- |
-| `insert`  | 先頭に指定バイト列を **追加**（元の中身は全部残る） | 増える | シグネチャさえ合格すれば中身は不問、という緩い検証の回避 |
-| `replace` | 先頭 N バイトを指定バイト列で **上書き**（残りは保持） | 変わらない | 先頭数バイトだけを見て判定するような検証の回避 |
-
-- `insert` は元データを壊さないので、画像ビューアでは壊れた画像扱いでも、中身は元のまま読めます。
-- `replace` は元ファイルが指定バイト列より短いとエラーになります（`insert` を使ってください）。
+`insert` は元データを壊しません。`replace` は元ファイルが新しいバイト列より短いとエラーになります
+（`insert` を使ってください）。
 
 ---
 
 ## インストール
 
-### リリースバイナリをダウンロード（推奨 / Go 不要）
+### リリースバイナリ（推奨 / Go 不要）
 
-[GitHub Releases](https://github.com/Akira0412-degitech/Mbyte/releases) に各 OS / アーキテクチャ向けの
-アーカイブを用意しています。ファイル名は `mbyte_<version>_<os>_<arch>.tar.gz`（Linux / macOS）または
-`.zip`（Windows）で、`checksums.txt`（SHA-256）も同梱しています。
+[GitHub Releases](https://github.com/Akira0412-degitech/Mbyte/releases) から取得します。アーカイブ名は
+`mbyte_<version>_<os>_<arch>.tar.gz`（Linux / macOS）または `.zip`（Windows）で、`checksums.txt`
+（SHA-256）も同梱。Linux / macOS / Windows × amd64 / arm64 を用意しています。
 
-| OS | amd64 | arm64 |
-| -- | ----- | ----- |
-| Linux (Kali 等) | `mbyte_0.2.0_linux_amd64.tar.gz` | `mbyte_0.2.0_linux_arm64.tar.gz` |
-| macOS | `mbyte_0.2.0_darwin_amd64.tar.gz` | `mbyte_0.2.0_darwin_arm64.tar.gz` |
-| Windows | `mbyte_0.2.0_windows_amd64.zip` | `mbyte_0.2.0_windows_arm64.zip` |
-
-Kali / Linux（amd64）の例 — ダウンロード → チェックサム検証 → 展開 → PATH へ:
+Linux（amd64）の例:
 
 ```bash
 VER=0.2.0
 BASE="https://github.com/Akira0412-degitech/Mbyte/releases/download/v${VER}"
-
-# バイナリとチェックサムを取得
 curl -fsSLO "${BASE}/mbyte_${VER}_linux_amd64.tar.gz"
 curl -fsSLO "${BASE}/checksums.txt"
-
-# SHA-256 を検証（OK: "mbyte_0.2.0_linux_amd64.tar.gz: OK" と出る）
-sha256sum --ignore-missing -c checksums.txt
-
-# 展開して PATH の通った場所へ
+sha256sum --ignore-missing -c checksums.txt      # 検証
 tar xzf "mbyte_${VER}_linux_amd64.tar.gz"
 sudo install -m 0755 mbyte /usr/local/bin/mbyte
-mbyte --version
 ```
 
-Windows は `.zip` を展開し、`mbyte.exe` を PATH の通ったフォルダに置いてください
-（検証は PowerShell の `Get-FileHash mbyte_0.2.0_windows_amd64.zip -Algorithm SHA256` で `checksums.txt` と突き合わせます）。
+Windows は `.zip` を展開し、`mbyte.exe` を PATH に置いてください（検証は `Get-FileHash ... -Algorithm
+SHA256` で `checksums.txt` と突き合わせ）。インストール後は `mbyte update` で最新に保てます
+（[自己更新](#自己更新update)参照）。
 
-インストール後は手動で再ダウンロードしなくても最新に保てます。`mbyte update --check` で現在の
-バージョンと最新リリースを比較でき、`mbyte update` でバイナリを自己置換できます
-（下記「[自己更新](#自己更新update)」参照）。
-
-### `go install`（Go ツールチェインがある場合）
+### go install / ソースからビルド
 
 ```bash
-go install github.com/Akira0412-degitech/Mbyte/cmd/mbyte@latest
+go install github.com/Akira0412-degitech/Mbyte/cmd/mbyte@latest   # Go 1.21 以上
+# または
+git clone https://github.com/Akira0412-degitech/Mbyte.git && cd Mbyte/go && go build -o mbyte ./cmd/mbyte
 ```
 
-`mbyte` バイナリが `$(go env GOPATH)/bin` に入ります（PATH を通してください）。
-
-### ソースからビルド
-
-```bash
-git clone https://github.com/Akira0412-degitech/Mbyte.git
-cd Mbyte/go
-go build -o mbyte ./cmd/mbyte
-```
-
-- 必要環境: **Go 1.21 以上**
-- 依存ライブラリ: CLI 実装に [cobra](https://github.com/spf13/cobra)、`mbyte update` に
-  [minio/selfupdate](https://github.com/minio/selfupdate) を使用（`go.mod` 参照）。
+依存ライブラリ: [cobra](https://github.com/spf13/cobra)（CLI）と
+[minio/selfupdate](https://github.com/minio/selfupdate)（`mbyte update`）。
 
 ---
 
 ## 使い方
 
 ```
-mbyte insert  --preset <name> <input> -o <output>
-mbyte insert  --hex <hexstring> <input> -o <output>
-mbyte replace --preset <name> <input> -o <output>
-mbyte replace --hex <hexstring> <input> -o <output>
+mbyte insert  --preset <name>|--hex <hex> <input> -o <output>
+mbyte replace --preset <name>|--hex <hex> <input> -o <output>
 mbyte check   <file>
 mbyte update  [--check]
 mbyte --list-presets
@@ -113,126 +80,57 @@ mbyte --list-presets
 | オプション | 説明 |
 | ---------- | ---- |
 | `--preset <name>` | 名前付きプリセットを使う（`--list-presets` で一覧） |
-| `--hex <hexstring>` | 生の 16 進文字列を直接指定（例: `89504e470d0a1a0a`） |
-| `-o`, `--output` | 出力ファイルパス。**省略時は `<input>.mbyte`**（プリセット指定時はそのプリセットの既定拡張子） |
-| `--force` | 入力ファイル自体への上書きを許可（既定では事故防止のため禁止） |
-| `--raw` | （`replace` のみ）署名境界検出をスキップし、先頭から正確に `len(hex)` バイトを上書き（旧来の危険な挙動） |
+| `--hex <hex>` | 生の 16 進文字列。例: `89504e470d0a1a0a` |
+| `-o`, `--output` | 出力パス（既定は `<input>.mbyte`、プリセット指定時はその拡張子） |
+| `--force` | 入力ファイル自体への上書きを許可（既定は禁止） |
+| `--raw` | （`replace` のみ）境界検出をせず、先頭から正確に `len(hex)` バイトを上書き |
 | `-y`, `--yes` | 書き込み前の確認プロンプトをスキップ |
-| `--dry-run` | 書き込まず、プレビューだけ表示して終了 |
-| `--no-check` | 書き込み後の構造チェック（デコード検証）を行わない |
-| `-r`, `--recursive` | 入力がディレクトリのとき、サブディレクトリも対象にする（バッチ） |
-| `--json` | 入力がディレクトリのとき、結果を JSON 配列で出力 |
-| `-v`, `--verbose` | 詳細ログを表示 |
-| `--list-presets` | プリセット一覧を表示して終了（ルート） |
-| `--version` | バージョンを表示（ルート） |
+| `--dry-run` | 書き込まずプレビューのみ表示して終了 |
+| `--no-check` | 書き込み後の構造チェックを行わない |
+| `-r`, `--recursive` | 入力がディレクトリのとき再帰的に処理（バッチ） |
+| `--json` | バッチ結果を JSON で出力 |
+| `-v`, `--verbose` | 詳細ログ |
 
-- `--preset` と `--hex` は **どちらか一方が必須**（両方指定はエラー）。
-- 出力先が入力ファイルと同一になる場合、`--force` がないと処理を拒否します（上書き事故防止）。
-- **確認プロンプト**は端末（TTY）から対話実行したときだけ出ます。パイプやスクリプト等の非対話実行では
-  そのまま実行されます（`-y` と同等）。ディレクトリへのバッチ処理も非対話で実行されます。
+`--preset` と `--hex` はどちらか一方が必須。確認プロンプトは対話端末のときだけ表示され、パイプ・
+スクリプト・バッチ実行では `-y` 相当でそのまま進みます。
 
 ### 実行例
 
-以下はリポジトリ同梱のサンプル `shell.php`（Web シェル文字列を含む無害なテキスト）を使った、
-そのままコピペで動く例です。クローン直後のリポジトリルートで実行してください
-（`mbyte` が PATH にない場合は `./go/mbyte` のようにパスを指定）。
-
-プリセットを使って PNG ヘッダを先頭に追加：
+リポジトリ同梱のサンプル `shell.php`（Web シェル文字列を含む無害なファイル）を使い、リポジトリ
+ルートで実行します:
 
 ```bash
-mbyte insert --preset png shell.php -o demo.png
+mbyte insert --preset png shell.php -o demo.png        # PNG ヘッダを先頭に追加
+mbyte insert --hex 89504e470d0a1a0a shell.php -o x.png # 任意のシグネチャ
+mbyte replace --preset jpeg demo.png -o demo.jpg       # 先頭署名を置換
+mbyte replace --preset jpeg demo.png -o demo.jpg --dry-run   # プレビューのみ、書き込みなし
+mbyte insert --preset png ./dir -o ./out -r --json     # ディレクトリを一括処理
 ```
 
-成功すると、判定フォーマットと先頭 16 バイトの hexdump が標準出力に、構造チェック結果が
-標準エラーに表示されます：
+成功した `insert` は、判定フォーマットと hexdump を標準出力に、構造チェック結果を標準エラーに
+表示します:
 
 ```
 [+] wrote demo.png
 [+] detected format: PNG image data
-00000000: 89 50 4e 47 0d 0a 1a 0a ff fe 3c 00 3f 00 70 00  .PNG......<.?.p.
 [check] structure: FAIL (png: invalid format: Bad chunk length: 4294851584)
 ```
 
-> 上の `[check] structure: FAIL` は意図どおりです。PNG シグネチャを付けただけでは正規の PNG には
-> ならないことを示しています（下記「構造検証」参照）。
+この `FAIL` は意図どおりです。PNG 署名を付けただけでは正規の PNG にはなりません（下記参照）。
 
-生の 16 進で任意のシグネチャを追加：
+### `replace` と `--raw`
 
-```bash
-mbyte insert --hex 89504e470d0a1a0a shell.php -o demo.png.php
-```
-
-先頭バイトを JPEG シグネチャで置換（`demo.png` は上の例で作ったファイル）：
-
-```bash
-mbyte replace --preset jpeg demo.png -o demo.jpg
-```
-
-書き込み前に変更内容とペイロードハッシュを確認（書き込みなし）：
-
-```bash
-mbyte replace --preset jpeg demo.png -o demo.jpg --dry-run
-```
-
-```
-[preview] input    : demo.png (74 bytes)
-[preview] current signature : 89504e470d0a1a0a ("PNG image data", 8 bytes)
-[preview] new signature     : ffd8ffe0 ("JPEG image data", 4 bytes)
-[preview] payload hash (before)           : 69009c...
-[preview] payload hash (after, estimated) : 69009c... [MATCH]
-[preview] output   : demo.jpg (70 bytes, -4 bytes)
-[*] dry-run: no file written
-```
-
-確認プロンプトを出さずに実行（スクリプト向け）：
-
-```bash
-mbyte insert --preset png shell.php -o demo.png -y
-```
-
-ディレクトリ内の全ファイルへ一括適用（再帰、結果を JSON で）：
-
-```bash
-mbyte insert --preset png ./some_dir -o ./out --recursive --json
-```
-
-### `replace`: 署名境界検出と `--raw`
-
-既定の `replace` は、ファイルの **既存** 署名の長さを検出し、その境界で新しいバイト列を差し込みます。
-新しい署名が元より短くても長くても正しく動きます（切り取り位置は「元の署名が実際に終わる場所」で
-あって、新しい署名の長さではないため）。これにより、ゴミバイトの残留（新署名が短い場合）や実データの
-破壊（新署名が長い場合）を避けられます。
-
-```bash
-# 安全（既定）：既存署名の実際の長さを検出してそこで差し替える
-mbyte replace --preset png broken.png -o fixed.png
-
-# 手動／危険：検出をスキップし先頭から len(hex) バイトを上書き
-mbyte replace --preset png broken.png -o fixed.png --raw
-```
-
-現在の署名が認識できない場合、`replace`（`--raw` なし）は差し込み位置を推測せずエラーにします。
-`--raw` で固定長上書きを強制するか、単に先頭へ足したいだけなら `insert` を使ってください。
-
----
-
-## ペイロード整合性チェック
-
-`insert` / `replace` は、操作前後で **ペイロード（署名以降のバイト列）** の SHA-256 を比較し、
-`[MATCH]` / `[MISMATCH]` / `[UNVERIFIED]` を示します（`--dry-run` や `-v`、対話実行時のプレビューに表示）。
-
-- `insert` と境界検出ありの `replace` はペイロードを保持するので常に `[MATCH]`。
-- `--raw` で長さがズレると `[MISMATCH] (payload shifted by ±N bytes)` と、何バイトずれたかを表示します。
+既定の `replace` は、ファイルの既存署名が終わる位置を検出してそこで差し替えます。新しい署名が
+元より短くても長くても正しく動き、ゴミバイトの残留やデータ破壊を避けられます。現在の署名を認識
+できない場合はエラーになります。`--raw` で固定長上書きを強制するか、単に先頭へ足すなら `insert`
+を使ってください。
 
 ---
 
 ## 構造検証（`check`）
 
-`detect_format`（先頭シグネチャの判定）と、Go 標準ライブラリのデコーダによる **実際のパース** を
-1 レポートにまとめます。「署名が一致する」ことと「その形式として本当に妥当」なことの違いが分かります。
-
-リポジトリ同梱の `shell.png.php`（`insert --preset png shell.php` で作られる、PNG 署名付きの
-サンプル）で試せます：
+`check` は、署名の判定と、Go 標準ライブラリのデコーダによる **実際のパース** の両方を 1 レポートに
+まとめ、「署名が一致する」ことと「本当に妥当」なことの差を示します。
 
 ```bash
 mbyte check shell.png.php
@@ -244,195 +142,95 @@ file: shell.png.php
 [structure] FAIL (png: invalid format: Bad chunk length: 4294851584)
 ```
 
-- 対応フォーマット: PNG / JPEG / GIF（`image/*`）、ZIP（`archive/zip`）、ELF / PE（`debug/elf` / `debug/pe`）。
-- 構造が妥当なら `[structure] PASS`、未対応フォーマットは `[structure] SKIP`。
-- 構造 FAIL のとき `check` は終了コード `1` を返します。
-- `insert` / `replace` も書き込み後に自動で同じチェックを行い結果を標準エラーへ追記します（`--no-check` で無効化）。
+- 対応: PNG / JPEG / GIF、ZIP、ELF / PE。妥当なら `PASS`、未対応は `SKIP`、FAIL は終了コード `1`。
+- `insert` / `replace` は書き込み後に自動で同じチェックを実行します（`--no-check` で無効化）。
+- あわせてペイロードの SHA-256 を前後で比較し、`[MATCH]` / `[MISMATCH（±N バイトずれ）]` /
+  `[UNVERIFIED]` を表示します（`insert` と境界検出ありの `replace` は常に `[MATCH]`）。
 
-ZIP は末尾の End of Central Directory を検証するため、先頭にシグネチャを足しただけでは決して妥当に
-なりません。これは「先頭バイトだけの偽装」では本物の検証を通せないことの好例です。
+ZIP はファイル末尾の End of Central Directory を見るため、先頭に署名を足しただけでは妥当になりません
+— 先頭バイトだけの偽装が本物のパーサを通せないことの好例です。
 
 ---
 
 ## 自己更新（`update`）
 
-`mbyte update` は新しいリリースを確認し、バイナリをその場で置き換えられます。
-
 ```bash
 mbyte update --check    # 現在と最新を表示するだけ（何も変更しない）
-mbyte update            # 最新をダウンロードして自己置換（TTY では確認プロンプト）
-mbyte update -y         # 確認プロンプトなしで自己置換
+mbyte update            # 最新をダウンロードして自己置換（TTY では確認）
+mbyte update -y         # 確認なしで自己置換
 ```
 
-- `--check` は GitHub の最新リリースを問い合わせ、次のいずれかを表示します:
-
-  ```
-  mbyte v0.2.0 is the latest release
-  update available: v0.3.0 (current v0.2.0)
-  ```
-
-- `--check` なしの場合、お使いの OS / アーキテクチャ向けのアーカイブをダウンロードし、検証して、
-  バイナリを展開し、実行中の実行ファイルを原子的に置き換えます。TTY では先に
-  `[?] update to vX.Y.Z? [y/N]` と確認します（`-y`/`--yes` でスキップ）。
-
-  ```
-  update available: v0.3.0 (current v0.2.0)
-  [?] update to v0.3.0? [y/N]: y
-  [+] updated to v0.3.0
-  ```
-
-- **2 層検証**: ダウンロードしたアーカイブの SHA-256 を、**書き込み前に** リリースの `checksums.txt`
-  と照合し、さらに展開後バイナリの SHA-256 を置き換え直前に再検証します。ダウンロードや検証の
-  いずれかが失敗した場合、既存のバイナリには一切手を付けません。
-
-### オプション（`update`）
+`update` は、お使いの OS / アーキ向けの最新リリースを取得し、**アーカイブを `checksums.txt` と
+照合 → 展開後バイナリの SHA-256 を再検証してから** 実行中のバイナリを置き換えます。ダウンロードや
+検証のいずれかが失敗した場合、既存のバイナリには一切手を付けません。
 
 | オプション | 説明 |
 | ---------- | ---- |
-| `--check` | 現在と最新を確認・表示するだけ。ダウンロードも置換も行わない |
-| `-y`, `--yes` | `[y/N]` 確認プロンプトをスキップ（yes とみなす） |
+| `--check` | 現在と最新を確認・表示するだけ。ダウンロードも置換もしない |
+| `-y`, `--yes` | `[y/N]` 確認プロンプトをスキップ |
 
 ---
 
-## プリセット一覧
+## プリセット
 
-| 名前        | Hex                | フォーマット              |
-| ----------- | ------------------ | ------------------------- |
-| `png`       | `89504e470d0a1a0a` | PNG 画像                  |
-| `gif89a`    | `474946383961`     | GIF 画像 (version 89a)    |
-| `gif87a`    | `474946383761`     | GIF 画像 (version 87a)    |
-| `jpeg`      | `ffd8ffe0`         | JPEG 画像                 |
-| `pdf`       | `25504446`         | PDF ドキュメント          |
-| `zip`       | `504b0304`         | ZIP アーカイブ            |
-| `elf`       | `7f454c46`         | ELF 実行ファイル          |
-| `pe`        | `4d5a`             | PE32 実行ファイル (MZ)    |
-| `gzip`      | `1f8b`             | gzip 圧縮データ           |
-| `7z`        | `377abcaf271c`     | 7-zip アーカイブ          |
-| `rar`       | `52617221`         | RAR アーカイブ            |
-| `javaclass` | `cafebabe`         | Java class ファイル       |
+| 名前 | Hex | 名前 | Hex |
+| ---- | --- | ---- | --- |
+| `png` | `89504e470d0a1a0a` | `elf` | `7f454c46` |
+| `gif89a` | `474946383961` | `pe` | `4d5a` |
+| `gif87a` | `474946383761` | `gzip` | `1f8b` |
+| `jpeg` | `ffd8ffe0` | `7z` | `377abcaf271c` |
+| `pdf` | `25504446` | `rar` | `52617221` |
+| `zip` | `504b0304` | `javaclass` | `cafebabe` |
 
-`mbyte --list-presets` で CLI からも確認できます。
+CLI からは `mbyte --list-presets` で確認できます。（BMP は検出専用で、insert プリセットとしては未公開。）
 
 ---
 
-## シェル補完
+## 終了コード
 
-cobra の補完生成を利用できます（bash / zsh / fish / powershell）。例（bash）：
+| コード | 意味 |
+| ------ | ---- |
+| `0` | 正常終了 |
+| `1` | 実行時エラー（不正 hex・ファイル不存在・short replace・上書き拒否・未知プリセット・バッチ失敗・`check` の構造 FAIL 等）。`error: ...` を標準エラーに表示 |
+| `2` | 引数エラー（例: `--preset` と `--hex` の同時指定、不明なフラグ） |
+
+---
+
+## 注意点・既知の制約
+
+- **判定は「先頭バイトの推測」** で完全な検証ではありません。本物の `file(1)` と食い違うこともあります。
+  実際にパースできるかは `mbyte check` で確認できます（それでも完全ではありません）。
+- **`insert` は正規フォーマットとしては壊れたファイルを作り**（オフセットがずれる）、
+  **`replace` は元の先頭バイトを失います**（入力ファイル自体は変更しません）。
+- **万能な回避ツールではありません**。Content-Type チェック、再エンコード、実際のパースを伴う検証は
+  マジックバイト偽装だけでは通りません。
+- **`replace` の境界検出は上記プリセットのみ対応**。他の形式は `--raw` が必要です。
+  **JPEG 検出は汎用の 3 バイト `FF D8 FF`** に一致します（プリセットは 4 バイトを書き込みます）。
+- **`checksums.txt` は GPG 署名されていません** — SHA-256 は破損を防ぎますが、リリースホストの侵害や、
+  両ファイルを偽造する中間者攻撃は防げません。高い保証が必要なら信頼できる経路で検証してください。
+- **ウイルス対策ソフト** が Web シェル文字列を含むファイルを隔離することがあります。検証用フォルダを
+  除外するか、無害なデータで試してください。
+
+---
+
+## 開発
 
 ```bash
-mbyte completion bash > /etc/bash_completion.d/mbyte      # システム全体
-# or
-mbyte completion bash > ~/.local/share/bash-completion/completions/mbyte
+cd go && go test ./... -v                 # Go（主）
+cd legacy-python && pip install -e ".[test]" && pytest -q   # Python 参照実装
 ```
 
-`mbyte completion --help` で各シェルの手順が見られます。
-
----
-
-## 終了コードとエラー
-
-| 状況 | 終了コード | 挙動 |
-| ---- | ---------- | ---- |
-| 正常終了 | `0` | 出力ファイルを書き込み、確認情報を表示 |
-| 実行時エラー | `1` | 不正な 16 進・ファイル不存在・short replace・上書き拒否・未知プリセット／バッチ内の失敗／`check` の構造 FAIL など。`error: ...` を標準エラーに表示（バッチ・`check` は結果出力済みのため終了コードのみ） |
-| 引数エラー | `2` | 引数自体の誤り（例: `--preset` と `--hex` の同時指定、不明なフラグ） |
-
-主なエラーメッセージの例：
-
-```
-error: hex string has an odd number of digits (3): 'xyz'
-error: input file is too short (2 bytes) to replace 8 bytes; use 'insert' instead
-error: refusing to overwrite the input file; choose a different -o/--output path or pass --force
-error: unknown preset 'bmp'; valid presets: png, gif89a, gif87a, jpeg, pdf, zip, elf, pe, gzip, 7z, rar, javaclass
-error: could not recognize the current file's signature, so there is no safe splice point for 'replace'; pass raw=True (CLI: --raw) to force a fixed-length overwrite, or use 'insert' to just prepend bytes
-```
-
----
-
-## Known limitations
-
-- **Signature-boundary detection only recognizes the signatures in the
-  detection table** (`go/internal/mbyte/core.go`). For any other format,
-  `replace` can't find a safe splice point and requires `--raw`.
-- **JPEG detection matches the generic 3-byte `FF D8 FF` prefix.** The 4th byte
-  (JFIF `E0` vs EXIF `E1`, etc.) is treated as part of the trailing data, not
-  the signature, so a `replace` onto a JPEG may not touch that 4th byte. (The
-  `jpeg` preset itself still writes the full 4-byte `ffd8ffe0` on insert.)
-- **BMP は検出専用** で、insert プリセットとしては公開していません。
-- **`checksums.txt` は GPG 署名されていません。** `mbyte update` はこれ（SHA-256）でダウンロードを
-  検証し、破損や途中切れは防げますが、リリースホストの侵害や、アーカイブと `checksums.txt` の両方を
-  偽造する中間者攻撃は防げません。高い保証が必要な場合は、信頼できる経路でバイナリを検証してください。
-
-> **Go 版での改善点:** 元の Python 版は「先頭シグネチャの判定」までで、ファイルが実際にその形式として
-> デコードできるかは確認できませんでした。Go 版では標準ライブラリのデコーダを使った**構造検証**
-> （`check` サブコマンドと、insert / replace 後の自動チェック）を追加し、「署名が一致する」ことと
-> 「本当にパースできる」ことの差を実証できるようにしています。ただしこれも完全な妥当性検証ではなく、
-> 未対応フォーマットは `SKIP` になる点に注意してください。
-
----
-
-## 開発・テスト
-
-Go 実装（主）：
-
-```bash
-cd go
-go test ./... -v
-```
-
-Python 参照実装（`legacy-python/`）：
-
-```bash
-cd legacy-python
-pip install -e ".[test]"
-pytest -q
-```
-
-CI（GitHub Actions）で Go と Python の両方をビルド・テストします。
-
----
-
-## 懸念点・注意事項
-
-- **フォーマット判定は「先頭バイトの推測」にすぎません。**
-  `detect_format` は先頭のシグネチャを見て名前を返すだけで、ファイル全体が正当な
-  その形式であることを保証しません。本物の `file(1)` とは判定が一致しないこともあります。
-  実際にパースできるかは `mbyte check` で確認できます（それでも完全な検証ではありません）。
-
-- **`insert` は正規のフォーマットとしては壊れたファイルを作ります。**
-  先頭にバイト列を足すだけなので、元データのオフセットがずれます。ブラウザや
-  画像ビューアが「正しい画像」として開けるとは限りません。先頭バイトしか見ない検証にのみ有効です。
-
-- **`replace` は元の先頭バイトを失います。**
-  上書きした分の元データは出力には残りません（元の入力ファイルは変更しませんが、出力からは消えます）。
-
-- **これは検証回避の万能ツールではありません。**
-  Content-Type チェック、拡張子チェック、再エンコード、画像の再描画、実際のパースを伴う
-  検証などはマジックバイト偽装だけでは通りません。あくまで「先頭シグネチャだけを見る」
-  タイプの検証を学ぶためのものです。
-
-- **ウイルス対策ソフトが介入することがあります。**
-  Web シェル文字列（例: `<?php system($_GET["cmd"]); ?>`）を含むファイルを作ると、
-  AV が検知してファイルを隔離し、読み書き時にエラーになる場合があります。
-  これはツールのバグではありません。検証用フォルダを AV の除外対象にするか、無害なデータで
-  動作確認してください。
-
-- **改行コードについて。**
-  本ツールはバイト列をそのまま扱いますが、シェルで `echo` などを使ってテキスト入力を作ると、
-  OS によって改行が LF / CRLF に変わり、結果のバイト列が環境で異なることがあります。
+CI（GitHub Actions）で両方をビルド・テストします。シェル補完は
+`mbyte completion <bash|zsh|fish|powershell>` で生成できます。
 
 ---
 
 ## 免責事項
 
-本ツールは **Capture The Flag（CTF）の練習**、および **明示的な許可を得た環境** での
-セキュリティ検証に使うことのみを目的としています。自分が所有していない、または検証の許可を
-得ていないシステムに対してファイルアップロード制御を回避する目的で使用することは、
-違法となる可能性があります。作者は悪用を推奨・是認せず、悪用により生じたいかなる結果についても
-責任を負いません。責任を持って利用してください。
-
----
+**CTF の練習** と **明示的な許可を得た環境** でのセキュリティ検証のみを目的としています。所有も検証
+許可もないシステムに対してアップロード制御を回避する目的での使用は違法となる可能性があります。作者は
+悪用を是認せず、悪用による結果について責任を負いません。責任を持って利用してください。
 
 ## ライセンス
 
-MIT — 詳細は [LICENSE](LICENSE) を参照してください。
+MIT — 詳細は [LICENSE](LICENSE) を参照。
