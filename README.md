@@ -45,21 +45,21 @@ OS / architecture. Names are `mbyte_<version>_<os>_<arch>.tar.gz` (Linux / macOS
 
 | OS | amd64 | arm64 |
 | -- | ----- | ----- |
-| Linux (e.g. Kali) | `mbyte_0.1.0_linux_amd64.tar.gz` | `mbyte_0.1.0_linux_arm64.tar.gz` |
-| macOS | `mbyte_0.1.0_darwin_amd64.tar.gz` | `mbyte_0.1.0_darwin_arm64.tar.gz` |
-| Windows | `mbyte_0.1.0_windows_amd64.zip` | `mbyte_0.1.0_windows_arm64.zip` |
+| Linux (e.g. Kali) | `mbyte_0.2.0_linux_amd64.tar.gz` | `mbyte_0.2.0_linux_arm64.tar.gz` |
+| macOS | `mbyte_0.2.0_darwin_amd64.tar.gz` | `mbyte_0.2.0_darwin_arm64.tar.gz` |
+| Windows | `mbyte_0.2.0_windows_amd64.zip` | `mbyte_0.2.0_windows_arm64.zip` |
 
 Kali / Linux (amd64) example — download → verify checksum → extract → put on PATH:
 
 ```bash
-VER=0.1.0
+VER=0.2.0
 BASE="https://github.com/Akira0412-degitech/Mbyte/releases/download/v${VER}"
 
 # Fetch the binary and the checksums
 curl -fsSLO "${BASE}/mbyte_${VER}_linux_amd64.tar.gz"
 curl -fsSLO "${BASE}/checksums.txt"
 
-# Verify the SHA-256 (prints "mbyte_0.1.0_linux_amd64.tar.gz: OK")
+# Verify the SHA-256 (prints "mbyte_0.2.0_linux_amd64.tar.gz: OK")
 sha256sum --ignore-missing -c checksums.txt
 
 # Extract and move it onto your PATH
@@ -69,7 +69,11 @@ mbyte --version
 ```
 
 On Windows, extract the `.zip` and put `mbyte.exe` on your PATH (verify with PowerShell's
-`Get-FileHash mbyte_0.1.0_windows_amd64.zip -Algorithm SHA256` against `checksums.txt`).
+`Get-FileHash mbyte_0.2.0_windows_amd64.zip -Algorithm SHA256` against `checksums.txt`).
+
+Once installed, you can stay up to date without re-downloading by hand: `mbyte update --check`
+compares your version against the latest release, and `mbyte update` self-replaces the binary
+(see [Self-update](#self-update-update) below).
 
 ### `go install` (if you have the Go toolchain)
 
@@ -88,7 +92,8 @@ go build -o mbyte ./cmd/mbyte
 ```
 
 - Requires: **Go 1.21 or newer**
-- Dependencies: [cobra](https://github.com/spf13/cobra) for the CLI (see `go.mod`).
+- Dependencies: [cobra](https://github.com/spf13/cobra) for the CLI and
+  [minio/selfupdate](https://github.com/minio/selfupdate) for `mbyte update` (see `go.mod`).
 
 ---
 
@@ -100,6 +105,7 @@ mbyte insert  --hex <hexstring> <input> -o <output>
 mbyte replace --preset <name> <input> -o <output>
 mbyte replace --hex <hexstring> <input> -o <output>
 mbyte check   <file>
+mbyte update  [--check]
 mbyte --list-presets
 ```
 
@@ -258,6 +264,49 @@ can never make it valid — a vivid example of why "first-bytes-only" spoofing c
 
 ---
 
+## Self-update (`update`)
+
+`mbyte update` checks for a newer release and can replace the binary in place.
+
+```bash
+mbyte update --check    # only report current vs. latest; change nothing
+mbyte update            # download the latest and self-replace (prompts on a TTY)
+mbyte update -y         # self-replace without the confirmation prompt
+```
+
+- `--check` queries the latest GitHub release and prints one of:
+
+  ```
+  mbyte v0.2.0 is the latest release
+  update available: v0.3.0 (current v0.2.0)
+  ```
+
+- Without `--check`, it downloads the archive for your OS/architecture, verifies it, extracts the
+  binary, and atomically replaces the running executable. On a TTY it first asks
+  `[?] update to vX.Y.Z? [y/N]`; `-y`/`--yes` skips that prompt.
+
+  ```
+  update available: v0.3.0 (current v0.2.0)
+  [?] update to v0.3.0? [y/N]: y
+  [+] updated to v0.3.0
+  ```
+
+- **Two-layer verification**: the downloaded archive's SHA-256 is checked against the release's
+  `checksums.txt` *before anything is written*, and the extracted binary's SHA-256 is re-verified at
+  the moment of replacement. If any download or verification step fails, the existing binary is left
+  untouched.
+
+Options: `--check` (report only), `-y`/`--yes` (skip the prompt).
+
+### Options (`update`)
+
+| Option | Description |
+| ------ | ----------- |
+| `--check` | Only check and report current vs. latest; download and replace nothing |
+| `-y`, `--yes` | Skip the `[y/N]` confirmation prompt (assume yes) |
+
+---
+
 ## Preset list
 
 | Name        | Hex                | Format                    |
@@ -323,6 +372,10 @@ error: could not recognize the current file's signature, so there is no safe spl
   the signature, so a `replace` onto a JPEG may not touch that 4th byte. (The
   `jpeg` preset itself still writes the full 4-byte `ffd8ffe0` on insert.)
 - **BMP is detection-only** and is not exposed as an insert preset.
+- **`checksums.txt` is not GPG-signed.** `mbyte update` verifies downloads against it (SHA-256), which
+  protects against a corrupted or truncated download, but not against a compromised release host or a
+  man-in-the-middle that forges both the archive and the checksums. For high-assurance use, verify the
+  binary through a trusted channel.
 
 > **Improvement in the Go version:** the original Python version only did the "leading-signature
 > guess" and could not confirm whether a file actually decodes as that format. The Go version adds a

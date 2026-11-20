@@ -44,21 +44,21 @@
 
 | OS | amd64 | arm64 |
 | -- | ----- | ----- |
-| Linux (Kali 等) | `mbyte_0.1.0_linux_amd64.tar.gz` | `mbyte_0.1.0_linux_arm64.tar.gz` |
-| macOS | `mbyte_0.1.0_darwin_amd64.tar.gz` | `mbyte_0.1.0_darwin_arm64.tar.gz` |
-| Windows | `mbyte_0.1.0_windows_amd64.zip` | `mbyte_0.1.0_windows_arm64.zip` |
+| Linux (Kali 等) | `mbyte_0.2.0_linux_amd64.tar.gz` | `mbyte_0.2.0_linux_arm64.tar.gz` |
+| macOS | `mbyte_0.2.0_darwin_amd64.tar.gz` | `mbyte_0.2.0_darwin_arm64.tar.gz` |
+| Windows | `mbyte_0.2.0_windows_amd64.zip` | `mbyte_0.2.0_windows_arm64.zip` |
 
 Kali / Linux（amd64）の例 — ダウンロード → チェックサム検証 → 展開 → PATH へ:
 
 ```bash
-VER=0.1.0
+VER=0.2.0
 BASE="https://github.com/Akira0412-degitech/Mbyte/releases/download/v${VER}"
 
 # バイナリとチェックサムを取得
 curl -fsSLO "${BASE}/mbyte_${VER}_linux_amd64.tar.gz"
 curl -fsSLO "${BASE}/checksums.txt"
 
-# SHA-256 を検証（OK: "mbyte_0.1.0_linux_amd64.tar.gz: OK" と出る）
+# SHA-256 を検証（OK: "mbyte_0.2.0_linux_amd64.tar.gz: OK" と出る）
 sha256sum --ignore-missing -c checksums.txt
 
 # 展開して PATH の通った場所へ
@@ -68,7 +68,11 @@ mbyte --version
 ```
 
 Windows は `.zip` を展開し、`mbyte.exe` を PATH の通ったフォルダに置いてください
-（検証は PowerShell の `Get-FileHash mbyte_0.1.0_windows_amd64.zip -Algorithm SHA256` で `checksums.txt` と突き合わせます）。
+（検証は PowerShell の `Get-FileHash mbyte_0.2.0_windows_amd64.zip -Algorithm SHA256` で `checksums.txt` と突き合わせます）。
+
+インストール後は手動で再ダウンロードしなくても最新に保てます。`mbyte update --check` で現在の
+バージョンと最新リリースを比較でき、`mbyte update` でバイナリを自己置換できます
+（下記「[自己更新](#自己更新update)」参照）。
 
 ### `go install`（Go ツールチェインがある場合）
 
@@ -87,7 +91,8 @@ go build -o mbyte ./cmd/mbyte
 ```
 
 - 必要環境: **Go 1.21 以上**
-- 依存ライブラリ: CLI 実装に [cobra](https://github.com/spf13/cobra) を使用（`go.mod` 参照）。
+- 依存ライブラリ: CLI 実装に [cobra](https://github.com/spf13/cobra)、`mbyte update` に
+  [minio/selfupdate](https://github.com/minio/selfupdate) を使用（`go.mod` 参照）。
 
 ---
 
@@ -99,6 +104,7 @@ mbyte insert  --hex <hexstring> <input> -o <output>
 mbyte replace --preset <name> <input> -o <output>
 mbyte replace --hex <hexstring> <input> -o <output>
 mbyte check   <file>
+mbyte update  [--check]
 mbyte --list-presets
 ```
 
@@ -248,6 +254,46 @@ ZIP は末尾の End of Central Directory を検証するため、先頭にシ�
 
 ---
 
+## 自己更新（`update`）
+
+`mbyte update` は新しいリリースを確認し、バイナリをその場で置き換えられます。
+
+```bash
+mbyte update --check    # 現在と最新を表示するだけ（何も変更しない）
+mbyte update            # 最新をダウンロードして自己置換（TTY では確認プロンプト）
+mbyte update -y         # 確認プロンプトなしで自己置換
+```
+
+- `--check` は GitHub の最新リリースを問い合わせ、次のいずれかを表示します:
+
+  ```
+  mbyte v0.2.0 is the latest release
+  update available: v0.3.0 (current v0.2.0)
+  ```
+
+- `--check` なしの場合、お使いの OS / アーキテクチャ向けのアーカイブをダウンロードし、検証して、
+  バイナリを展開し、実行中の実行ファイルを原子的に置き換えます。TTY では先に
+  `[?] update to vX.Y.Z? [y/N]` と確認します（`-y`/`--yes` でスキップ）。
+
+  ```
+  update available: v0.3.0 (current v0.2.0)
+  [?] update to v0.3.0? [y/N]: y
+  [+] updated to v0.3.0
+  ```
+
+- **2 層検証**: ダウンロードしたアーカイブの SHA-256 を、**書き込み前に** リリースの `checksums.txt`
+  と照合し、さらに展開後バイナリの SHA-256 を置き換え直前に再検証します。ダウンロードや検証の
+  いずれかが失敗した場合、既存のバイナリには一切手を付けません。
+
+### オプション（`update`）
+
+| オプション | 説明 |
+| ---------- | ---- |
+| `--check` | 現在と最新を確認・表示するだけ。ダウンロードも置換も行わない |
+| `-y`, `--yes` | `[y/N]` 確認プロンプトをスキップ（yes とみなす） |
+
+---
+
 ## プリセット一覧
 
 | 名前        | Hex                | フォーマット              |
@@ -313,6 +359,9 @@ error: could not recognize the current file's signature, so there is no safe spl
   the signature, so a `replace` onto a JPEG may not touch that 4th byte. (The
   `jpeg` preset itself still writes the full 4-byte `ffd8ffe0` on insert.)
 - **BMP は検出専用** で、insert プリセットとしては公開していません。
+- **`checksums.txt` は GPG 署名されていません。** `mbyte update` はこれ（SHA-256）でダウンロードを
+  検証し、破損や途中切れは防げますが、リリースホストの侵害や、アーカイブと `checksums.txt` の両方を
+  偽造する中間者攻撃は防げません。高い保証が必要な場合は、信頼できる経路でバイナリを検証してください。
 
 > **Go 版での改善点:** 元の Python 版は「先頭シグネチャの判定」までで、ファイルが実際にその形式として
 > デコードできるかは確認できませんでした。Go 版では標準ライブラリのデコーダを使った**構造検証**
