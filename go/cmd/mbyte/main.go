@@ -12,9 +12,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// version is the build's version string. It is a var (not a const) so a release
-// build can stamp it via -ldflags "-X main.version=<ver>"; the default here is
-// the fallback when no ldflag is set.
+// version is the build's version string. It is a var (not a const) so release
+// builds can stamp it via -ldflags "-X main.version=<ver>"; goreleaser does this
+// from the git tag (see .goreleaser.yaml). This literal is only the fallback for
+// plain `go build`/`go run` development builds.
 var version = "0.1.0"
 
 // errNoCommand signals "no subcommand given" -> print help and exit 1,
