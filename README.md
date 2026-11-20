@@ -2,108 +2,74 @@
 
 **English** | [日本語](README.ja.md)
 
-`mbyte` is a small **Go** CLI tool that **inserts** or **replaces** the magic bytes
-(the file signature) at the start of a file.
+`mbyte` is a small **Go** CLI that **inserts** or **replaces** the magic bytes (the file
+signature) at the start of a file. It is an educational tool for learning — in **CTF challenges and
+authorized security testing** — how upload file-type checks work and how magic-byte spoofing can
+bypass them.
 
-It is an educational tool for learning — through **CTF challenges and authorized security
-testing** — how file-type validation on uploads works and how it can be bypassed (magic-byte
-spoofing).
+It does one simple thing (prepend bytes, or overwrite the first N bytes) but does it **safely**:
+named presets, input validation, a SHA-256 payload check, and a structural check (`check`) that
+shows the gap between "the signature matches" and "it actually parses as that format".
 
-What it does is simple: it either prepends a byte sequence or overwrites the first N bytes.
-The value is in doing that simple operation **safely and legibly** — named presets, input
-validation, a post-op confirmation that prints `file` / `xxd`-style output, a SHA-256 comparison
-that proves the payload is intact, and a structural check (`check`) that shows the difference
-between "the signature matches" and "it actually parses as that format".
-
-> This repository was originally written in Python and has been ported to Go. The original Python
-> implementation is kept for reference in [`legacy-python/`](legacy-python/) (it has not been deleted).
+> Originally written in Python, now ported to Go. The Python version is kept for reference in
+> [`legacy-python/`](legacy-python/).
 
 ---
 
 ## insert vs. replace
 
-These two look similar but produce completely different results. Pick the one that fits your goal.
+| Subcommand | Behavior | File size | Use for |
+| ---------- | -------- | --------- | ------- |
+| `insert`  | Prepends the bytes (keeps all original content) | grows | Checks that pass as long as the signature matches |
+| `replace` | Overwrites the first N bytes (keeps the rest) | unchanged | Checks that only inspect the first few bytes |
 
-| Subcommand | Behavior | File size | Main use |
-| ---------- | -------- | --------- | -------- |
-| `insert`  | **Prepends** the given bytes at the start (keeps all original content) | grows | Bypassing loose checks where the content is irrelevant as long as the signature passes |
-| `replace` | **Overwrites** the first N bytes with the given bytes (keeps the rest) | unchanged | Bypassing checks that only inspect the first few bytes |
-
-- `insert` does not corrupt the original data, so even if an image viewer treats it as a broken
-  image, the original content is still readable.
-- `replace` errors out if the original file is shorter than the given byte sequence (use `insert`).
+`insert` never corrupts the original data; `replace` errors out if the file is shorter than the new
+bytes (use `insert` instead).
 
 ---
 
 ## Installation
 
-### Download a release binary (recommended / no Go needed)
+### Release binary (recommended, no Go needed)
 
-[GitHub Releases](https://github.com/Akira0412-degitech/Mbyte/releases) provides archives for each
-OS / architecture. Names are `mbyte_<version>_<os>_<arch>.tar.gz` (Linux / macOS) or `.zip`
-(Windows), and a `checksums.txt` (SHA-256) is included.
+Download from [GitHub Releases](https://github.com/Akira0412-degitech/Mbyte/releases). Archives are
+named `mbyte_<version>_<os>_<arch>.tar.gz` (Linux / macOS) or `.zip` (Windows), with a
+`checksums.txt` (SHA-256). Linux / macOS / Windows × amd64 / arm64 are provided.
 
-| OS | amd64 | arm64 |
-| -- | ----- | ----- |
-| Linux (e.g. Kali) | `mbyte_0.2.0_linux_amd64.tar.gz` | `mbyte_0.2.0_linux_arm64.tar.gz` |
-| macOS | `mbyte_0.2.0_darwin_amd64.tar.gz` | `mbyte_0.2.0_darwin_arm64.tar.gz` |
-| Windows | `mbyte_0.2.0_windows_amd64.zip` | `mbyte_0.2.0_windows_arm64.zip` |
-
-Kali / Linux (amd64) example — download → verify checksum → extract → put on PATH:
+Linux (amd64) example:
 
 ```bash
 VER=0.2.0
 BASE="https://github.com/Akira0412-degitech/Mbyte/releases/download/v${VER}"
-
-# Fetch the binary and the checksums
 curl -fsSLO "${BASE}/mbyte_${VER}_linux_amd64.tar.gz"
 curl -fsSLO "${BASE}/checksums.txt"
-
-# Verify the SHA-256 (prints "mbyte_0.2.0_linux_amd64.tar.gz: OK")
-sha256sum --ignore-missing -c checksums.txt
-
-# Extract and move it onto your PATH
+sha256sum --ignore-missing -c checksums.txt      # verify
 tar xzf "mbyte_${VER}_linux_amd64.tar.gz"
 sudo install -m 0755 mbyte /usr/local/bin/mbyte
-mbyte --version
 ```
 
-On Windows, extract the `.zip` and put `mbyte.exe` on your PATH (verify with PowerShell's
-`Get-FileHash mbyte_0.2.0_windows_amd64.zip -Algorithm SHA256` against `checksums.txt`).
+On Windows, extract the `.zip` and put `mbyte.exe` on your PATH (verify with
+`Get-FileHash ... -Algorithm SHA256` against `checksums.txt`). Once installed, `mbyte update` keeps
+it current (see [Self-update](#self-update-update)).
 
-Once installed, you can stay up to date without re-downloading by hand: `mbyte update --check`
-compares your version against the latest release, and `mbyte update` self-replaces the binary
-(see [Self-update](#self-update-update) below).
-
-### `go install` (if you have the Go toolchain)
+### go install / from source
 
 ```bash
-go install github.com/Akira0412-degitech/Mbyte/cmd/mbyte@latest
+go install github.com/Akira0412-degitech/Mbyte/cmd/mbyte@latest   # needs Go 1.21+
+# or
+git clone https://github.com/Akira0412-degitech/Mbyte.git && cd Mbyte/go && go build -o mbyte ./cmd/mbyte
 ```
 
-The `mbyte` binary lands in `$(go env GOPATH)/bin` (put it on your PATH).
-
-### Build from source
-
-```bash
-git clone https://github.com/Akira0412-degitech/Mbyte.git
-cd Mbyte/go
-go build -o mbyte ./cmd/mbyte
-```
-
-- Requires: **Go 1.21 or newer**
-- Dependencies: [cobra](https://github.com/spf13/cobra) for the CLI and
-  [minio/selfupdate](https://github.com/minio/selfupdate) for `mbyte update` (see `go.mod`).
+Dependencies: [cobra](https://github.com/spf13/cobra) (CLI) and
+[minio/selfupdate](https://github.com/minio/selfupdate) (`mbyte update`).
 
 ---
 
 ## Usage
 
 ```
-mbyte insert  --preset <name> <input> -o <output>
-mbyte insert  --hex <hexstring> <input> -o <output>
-mbyte replace --preset <name> <input> -o <output>
-mbyte replace --hex <hexstring> <input> -o <output>
+mbyte insert  --preset <name>|--hex <hex> <input> -o <output>
+mbyte replace --preset <name>|--hex <hex> <input> -o <output>
 mbyte check   <file>
 mbyte update  [--check]
 mbyte --list-presets
@@ -113,134 +79,57 @@ mbyte --list-presets
 
 | Option | Description |
 | ------ | ----------- |
-| `--preset <name>` | Use a named preset (list them with `--list-presets`) |
-| `--hex <hexstring>` | Give a raw hex string directly (e.g. `89504e470d0a1a0a`) |
-| `-o`, `--output` | Output file path. **Defaults to `<input>.mbyte`** (with a preset, that preset's default extension) |
-| `--force` | Allow overwriting the input file itself (disabled by default to prevent accidents) |
-| `--raw` | (`replace` only) Skip signature-boundary detection and overwrite exactly `len(hex)` bytes from the start (the old, unsafe behavior) |
+| `--preset <name>` | Use a named preset (see `--list-presets`) |
+| `--hex <hex>` | Raw hex string, e.g. `89504e470d0a1a0a` |
+| `-o`, `--output` | Output path (default `<input>.mbyte`, or the preset's extension) |
+| `--force` | Allow overwriting the input file (off by default) |
+| `--raw` | (`replace` only) Overwrite exactly `len(hex)` bytes, skipping boundary detection |
 | `-y`, `--yes` | Skip the pre-write confirmation prompt |
 | `--dry-run` | Show the preview and exit without writing |
-| `--no-check` | Do not run the post-write structural (decode) check |
-| `-r`, `--recursive` | When the input is a directory, also recurse into subdirectories (batch) |
-| `--json` | When the input is a directory, print results as a JSON array |
-| `-v`, `--verbose` | Print detailed logs |
-| `--list-presets` | Print the preset list and exit (root) |
-| `--version` | Print the version (root) |
+| `--no-check` | Skip the post-write structural check |
+| `-r`, `--recursive` | Recurse when the input is a directory (batch) |
+| `--json` | Print batch results as JSON |
+| `-v`, `--verbose` | Verbose logs |
 
-- Exactly **one of `--preset` or `--hex` is required** (giving both is an error).
-- If the output path would equal the input file, the operation is refused without `--force`
-  (to prevent accidental overwrites).
-- The **confirmation prompt** only appears when running interactively from a terminal (TTY).
-  Non-interactive runs (pipes, scripts, etc.) proceed as-is (equivalent to `-y`). Directory batch
-  runs are also non-interactive.
+Exactly one of `--preset` / `--hex` is required. The confirmation prompt appears only on an
+interactive terminal; pipes, scripts, and batch runs proceed as if `-y` were given.
 
 ### Examples
 
-The following use the bundled sample `shell.php` (a harmless text file containing a web-shell
-string) and are copy-paste runnable. Run them from the repository root right after cloning (if
-`mbyte` is not on your PATH, give a path such as `./go/mbyte`).
-
-Prepend a PNG header with a preset:
+Using the bundled sample `shell.php` (a harmless file with a web-shell string), from the repo root:
 
 ```bash
-mbyte insert --preset png shell.php -o demo.png
+mbyte insert --preset png shell.php -o demo.png        # prepend a PNG header
+mbyte insert --hex 89504e470d0a1a0a shell.php -o x.png # arbitrary signature
+mbyte replace --preset jpeg demo.png -o demo.jpg       # replace the leading signature
+mbyte replace --preset jpeg demo.png -o demo.jpg --dry-run   # preview only, no write
+mbyte insert --preset png ./dir -o ./out -r --json     # batch a directory
 ```
 
-On success, the detected format and a hexdump of the first 16 bytes go to stdout, and the
-structural-check result goes to stderr:
+A successful `insert` prints the detected format and a hexdump to stdout, and the structural-check
+result to stderr:
 
 ```
 [+] wrote demo.png
 [+] detected format: PNG image data
-00000000: 89 50 4e 47 0d 0a 1a 0a ff fe 3c 00 3f 00 70 00  .PNG......<.?.p.
 [check] structure: FAIL (png: invalid format: Bad chunk length: 4294851584)
 ```
 
-> That `[check] structure: FAIL` is intentional. It shows that merely attaching a PNG signature
-> does not make a valid PNG (see "Structural check" below).
+The `FAIL` is intentional: a prepended PNG signature does not make a valid PNG (see below).
 
-Prepend an arbitrary signature as raw hex:
+### `replace` and `--raw`
 
-```bash
-mbyte insert --hex 89504e470d0a1a0a shell.php -o demo.png.php
-```
-
-Replace the leading bytes with a JPEG signature (`demo.png` is the file from the example above):
-
-```bash
-mbyte replace --preset jpeg demo.png -o demo.jpg
-```
-
-Preview the change and the payload hash before writing (no write):
-
-```bash
-mbyte replace --preset jpeg demo.png -o demo.jpg --dry-run
-```
-
-```
-[preview] input    : demo.png (74 bytes)
-[preview] current signature : 89504e470d0a1a0a ("PNG image data", 8 bytes)
-[preview] new signature     : ffd8ffe0 ("JPEG image data", 4 bytes)
-[preview] payload hash (before)           : 69009c...
-[preview] payload hash (after, estimated) : 69009c... [MATCH]
-[preview] output   : demo.jpg (70 bytes, -4 bytes)
-[*] dry-run: no file written
-```
-
-Run without the confirmation prompt (for scripts):
-
-```bash
-mbyte insert --preset png shell.php -o demo.png -y
-```
-
-Apply to every file in a directory (recursive, results as JSON):
-
-```bash
-mbyte insert --preset png ./some_dir -o ./out --recursive --json
-```
-
-### `replace`: signature-boundary detection and `--raw`
-
-By default, `replace` detects the length of the file's **existing** signature and splices the new
-bytes in at that boundary. It works whether the new signature is shorter or longer than the old one
-(because the cut point is "where the original signature actually ends", not the length of the new
-signature). This avoids leftover garbage bytes (when the new signature is shorter) and corruption of
-real data (when it is longer).
-
-```bash
-# Safe (default): detect the existing signature's real length and splice there
-mbyte replace --preset png broken.png -o fixed.png
-
-# Manual / dangerous: skip detection and overwrite len(hex) bytes from the start
-mbyte replace --preset png broken.png -o fixed.png --raw
-```
-
-If the current signature is not recognized, `replace` (without `--raw`) errors out rather than
-guessing the splice point. Force a fixed-length overwrite with `--raw`, or use `insert` if you just
-want to prepend bytes.
-
----
-
-## Payload integrity check
-
-`insert` / `replace` compare the SHA-256 of the **payload** (the bytes after the signature) before
-and after the operation, showing `[MATCH]` / `[MISMATCH]` / `[UNVERIFIED]` (displayed in the preview
-with `--dry-run`, `-v`, or during an interactive run).
-
-- `insert` and boundary-detecting `replace` preserve the payload, so they are always `[MATCH]`.
-- When `--raw` shifts the length, it shows `[MISMATCH] (payload shifted by ±N bytes)` with the exact
-  byte offset.
+By default `replace` detects where the file's existing signature ends and splices there, so it works
+whether the new signature is shorter or longer — avoiding leftover bytes or data corruption. If the
+current signature is unrecognized it errors out; pass `--raw` to force a fixed-length overwrite, or
+use `insert` to just prepend.
 
 ---
 
 ## Structural check (`check`)
 
-`check` combines `detect_format` (the leading-signature guess) with an **actual parse** using the Go
-standard library's decoders, in a single report. It reveals the difference between "the signature
-matches" and "it is genuinely valid as that format".
-
-Try it with the bundled `shell.png.php` (a PNG-signatured sample produced by
-`insert --preset png shell.php`):
+`check` reports both the signature guess and an **actual parse** using Go's standard-library
+decoders, showing the difference between "signature matches" and "genuinely valid".
 
 ```bash
 mbyte check shell.png.php
@@ -252,202 +141,95 @@ file: shell.png.php
 [structure] FAIL (png: invalid format: Bad chunk length: 4294851584)
 ```
 
-- Supported formats: PNG / JPEG / GIF (`image/*`), ZIP (`archive/zip`), ELF / PE (`debug/elf` /
-  `debug/pe`).
-- A valid structure prints `[structure] PASS`; unsupported formats print `[structure] SKIP`.
-- On a structural FAIL, `check` returns exit code `1`.
-- `insert` / `replace` also run the same check automatically after writing and append the result to
-  stderr (disable with `--no-check`).
+- Supported: PNG / JPEG / GIF, ZIP, ELF / PE. Valid → `PASS`, unsupported → `SKIP`, FAIL → exit `1`.
+- `insert` / `replace` run this automatically after writing (disable with `--no-check`).
+- They also compare the payload's SHA-256 before/after, showing `[MATCH]` / `[MISMATCH (shifted by
+  ±N bytes)]` / `[UNVERIFIED]` — `insert` and boundary-detecting `replace` are always `[MATCH]`.
 
-ZIP validates the End of Central Directory at the end of the file, so merely prepending a signature
-can never make it valid — a vivid example of why "first-bytes-only" spoofing can't pass a real check.
+ZIP checks the End of Central Directory at the end of the file, so a prepended signature can never
+make it valid — a clear example of why first-bytes-only spoofing fails a real parser.
 
 ---
 
 ## Self-update (`update`)
 
-`mbyte update` checks for a newer release and can replace the binary in place.
-
 ```bash
-mbyte update --check    # only report current vs. latest; change nothing
+mbyte update --check    # report current vs. latest; change nothing
 mbyte update            # download the latest and self-replace (prompts on a TTY)
-mbyte update -y         # self-replace without the confirmation prompt
+mbyte update -y         # self-replace without the prompt
 ```
 
-- `--check` queries the latest GitHub release and prints one of:
-
-  ```
-  mbyte v0.2.0 is the latest release
-  update available: v0.3.0 (current v0.2.0)
-  ```
-
-- Without `--check`, it downloads the archive for your OS/architecture, verifies it, extracts the
-  binary, and atomically replaces the running executable. On a TTY it first asks
-  `[?] update to vX.Y.Z? [y/N]`; `-y`/`--yes` skips that prompt.
-
-  ```
-  update available: v0.3.0 (current v0.2.0)
-  [?] update to v0.3.0? [y/N]: y
-  [+] updated to v0.3.0
-  ```
-
-- **Two-layer verification**: the downloaded archive's SHA-256 is checked against the release's
-  `checksums.txt` *before anything is written*, and the extracted binary's SHA-256 is re-verified at
-  the moment of replacement. If any download or verification step fails, the existing binary is left
-  untouched.
-
-Options: `--check` (report only), `-y`/`--yes` (skip the prompt).
-
-### Options (`update`)
+`update` fetches the latest GitHub release for your OS/arch, **verifies the archive against
+`checksums.txt`, then re-verifies the extracted binary's SHA-256 before replacing** the running
+executable. If any download or verification step fails, the existing binary is left untouched.
 
 | Option | Description |
 | ------ | ----------- |
-| `--check` | Only check and report current vs. latest; download and replace nothing |
-| `-y`, `--yes` | Skip the `[y/N]` confirmation prompt (assume yes) |
+| `--check` | Only report current vs. latest; download/replace nothing |
+| `-y`, `--yes` | Skip the `[y/N]` confirmation prompt |
 
 ---
 
-## Preset list
+## Presets
 
-| Name        | Hex                | Format                    |
-| ----------- | ------------------ | ------------------------- |
-| `png`       | `89504e470d0a1a0a` | PNG image                 |
-| `gif89a`    | `474946383961`     | GIF image (version 89a)   |
-| `gif87a`    | `474946383761`     | GIF image (version 87a)   |
-| `jpeg`      | `ffd8ffe0`         | JPEG image                |
-| `pdf`       | `25504446`         | PDF document              |
-| `zip`       | `504b0304`         | ZIP archive               |
-| `elf`       | `7f454c46`         | ELF executable            |
-| `pe`        | `4d5a`             | PE32 executable (MZ)      |
-| `gzip`      | `1f8b`             | gzip compressed data      |
-| `7z`        | `377abcaf271c`     | 7-zip archive             |
-| `rar`       | `52617221`         | RAR archive               |
-| `javaclass` | `cafebabe`         | Java class file           |
+| Name | Hex | Name | Hex |
+| ---- | --- | ---- | --- |
+| `png` | `89504e470d0a1a0a` | `elf` | `7f454c46` |
+| `gif89a` | `474946383961` | `pe` | `4d5a` |
+| `gif87a` | `474946383761` | `gzip` | `1f8b` |
+| `jpeg` | `ffd8ffe0` | `7z` | `377abcaf271c` |
+| `pdf` | `25504446` | `rar` | `52617221` |
+| `zip` | `504b0304` | `javaclass` | `cafebabe` |
 
-You can also list these from the CLI with `mbyte --list-presets`.
+Run `mbyte --list-presets` to see them from the CLI. (BMP is detection-only, not an insert preset.)
 
 ---
 
-## Shell completion
+## Exit codes
 
-cobra's completion generation is available (bash / zsh / fish / powershell). Example (bash):
+| Code | Meaning |
+| ---- | ------- |
+| `0` | Success |
+| `1` | Runtime error (invalid hex, missing file, short replace, overwrite refused, unknown preset, batch failure, or a `check` structural FAIL) — prints `error: ...` to stderr |
+| `2` | Argument error (e.g. `--preset` and `--hex` together, or an unknown flag) |
+
+---
+
+## Notes & limitations
+
+- **Detection is a first-bytes guess**, not full validation — it may disagree with real `file(1)`.
+  Use `mbyte check` for an actual parse (still not a complete check).
+- **`insert` produces a file that is broken as a real format** (offsets shift); **`replace` discards
+  the original leading bytes** (the input file itself is untouched).
+- **Not a universal bypass**: Content-Type checks, re-encoding, and real parsing can't be fooled by
+  magic bytes alone.
+- **`replace` boundary detection only knows the presets above**; other formats require `--raw`.
+  **JPEG detection matches the generic 3-byte `FF D8 FF`** (the preset still writes 4 bytes).
+- **`checksums.txt` is not GPG-signed** — SHA-256 guards against corruption, not a compromised host
+  or MITM forging both files. Verify through a trusted channel for high assurance.
+- **Antivirus** may quarantine files containing web-shell strings; exclude your test folder or use
+  harmless data.
+
+---
+
+## Development
 
 ```bash
-mbyte completion bash > /etc/bash_completion.d/mbyte      # system-wide
-# or
-mbyte completion bash > ~/.local/share/bash-completion/completions/mbyte
+cd go && go test ./... -v                 # Go (primary)
+cd legacy-python && pip install -e ".[test]" && pytest -q   # Python reference
 ```
 
-See `mbyte completion --help` for per-shell instructions.
-
----
-
-## Exit codes and errors
-
-| Situation | Exit code | Behavior |
-| --------- | --------- | -------- |
-| Success | `0` | Writes the output file and prints confirmation info |
-| Runtime error | `1` | Invalid hex, missing file, short replace, overwrite refused, unknown preset, a failure within a batch, or a structural FAIL from `check`, etc. Prints `error: ...` to stderr (batch / `check` only use the exit code since they already printed their results) |
-| Argument error | `2` | A mistake in the arguments themselves (e.g. `--preset` and `--hex` together, or an unknown flag) |
-
-Common error messages:
-
-```
-error: hex string has an odd number of digits (3): 'xyz'
-error: input file is too short (2 bytes) to replace 8 bytes; use 'insert' instead
-error: refusing to overwrite the input file; choose a different -o/--output path or pass --force
-error: unknown preset 'bmp'; valid presets: png, gif89a, gif87a, jpeg, pdf, zip, elf, pe, gzip, 7z, rar, javaclass
-error: could not recognize the current file's signature, so there is no safe splice point for 'replace'; pass raw=True (CLI: --raw) to force a fixed-length overwrite, or use 'insert' to just prepend bytes
-```
-
----
-
-## Known limitations
-
-- **Signature-boundary detection only recognizes the signatures in the
-  detection table** (`go/internal/mbyte/core.go`). For any other format,
-  `replace` can't find a safe splice point and requires `--raw`.
-- **JPEG detection matches the generic 3-byte `FF D8 FF` prefix.** The 4th byte
-  (JFIF `E0` vs EXIF `E1`, etc.) is treated as part of the trailing data, not
-  the signature, so a `replace` onto a JPEG may not touch that 4th byte. (The
-  `jpeg` preset itself still writes the full 4-byte `ffd8ffe0` on insert.)
-- **BMP is detection-only** and is not exposed as an insert preset.
-- **`checksums.txt` is not GPG-signed.** `mbyte update` verifies downloads against it (SHA-256), which
-  protects against a corrupted or truncated download, but not against a compromised release host or a
-  man-in-the-middle that forges both the archive and the checksums. For high-assurance use, verify the
-  binary through a trusted channel.
-
-> **Improvement in the Go version:** the original Python version only did the "leading-signature
-> guess" and could not confirm whether a file actually decodes as that format. The Go version adds a
-> **structural check** (the `check` subcommand and the automatic check after insert / replace) using
-> standard-library decoders, so the gap between "the signature matches" and "it genuinely parses"
-> can be demonstrated. Note that this is still not a complete validity check — unsupported formats
-> become `SKIP`.
-
----
-
-## Development & testing
-
-Go implementation (primary):
-
-```bash
-cd go
-go test ./... -v
-```
-
-Python reference implementation (`legacy-python/`):
-
-```bash
-cd legacy-python
-pip install -e ".[test]"
-pytest -q
-```
-
-CI (GitHub Actions) builds and tests both Go and Python.
-
----
-
-## Caveats & notes
-
-- **Format detection is only a "first-bytes guess".**
-  `detect_format` just looks at the leading signature and returns a name; it does not guarantee that
-  the whole file is a valid file of that format. Its verdict may not match real `file(1)`. Whether it
-  actually parses can be checked with `mbyte check` (and even that is not a complete validation).
-
-- **`insert` produces a file that is broken as a real format.**
-  It only prepends bytes, so the original data's offsets shift. A browser or image viewer will not
-  necessarily open it as a "correct image". It is only effective against checks that look at the
-  first bytes.
-
-- **`replace` loses the original leading bytes.**
-  The overwritten portion of the original data is not kept in the output (the original input file is
-  not modified, but it is gone from the output).
-
-- **This is not a universal bypass tool.**
-  Content-Type checks, extension checks, re-encoding, image re-rendering, and validation that
-  actually parses the file cannot be passed with magic-byte spoofing alone. It is only for learning
-  about the "inspect the leading signature only" kind of validation.
-
-- **Antivirus may interfere.**
-  If you create a file containing a web-shell string (e.g. `<?php system($_GET["cmd"]); ?>`),
-  AV may detect and quarantine it, causing read/write errors. This is not a bug in the tool. Exclude
-  your test folder from AV, or verify behavior with harmless data.
-
-- **About newlines.**
-  This tool handles bytes as-is, but if you create text input using shell `echo` and similar, the OS
-  may turn newlines into LF / CRLF, so the resulting bytes can differ between environments.
+CI (GitHub Actions) builds and tests both. Shell completion is available via
+`mbyte completion <bash|zsh|fish|powershell>`.
 
 ---
 
 ## Disclaimer
 
-This tool is intended **only** for **Capture The Flag (CTF) practice** and security testing in
-**environments where you have explicit permission**. Using it to bypass file-upload controls on
-systems you do not own or are not authorized to test may be illegal. The author does not encourage or
-condone misuse and is not responsible for any consequences arising from misuse. Use it responsibly.
-
----
+For **CTF practice** and **authorized** security testing only. Using it to bypass upload controls on
+systems you do not own or have permission to test may be illegal. The author condones no misuse and
+is not responsible for it. Use responsibly.
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).
