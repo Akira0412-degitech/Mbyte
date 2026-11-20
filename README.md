@@ -34,6 +34,40 @@
 
 ## インストール
 
+### リリースバイナリをダウンロード（推奨 / Go 不要）
+
+[GitHub Releases](https://github.com/Akira0412-degitech/Mbyte/releases) に各 OS / アーキテクチャ向けの
+アーカイブを用意しています。ファイル名は `mbyte_<version>_<os>_<arch>.tar.gz`（Linux / macOS）または
+`.zip`（Windows）で、`checksums.txt`（SHA-256）も同梱しています。
+
+| OS | amd64 | arm64 |
+| -- | ----- | ----- |
+| Linux (Kali 等) | `mbyte_0.1.0_linux_amd64.tar.gz` | `mbyte_0.1.0_linux_arm64.tar.gz` |
+| macOS | `mbyte_0.1.0_darwin_amd64.tar.gz` | `mbyte_0.1.0_darwin_arm64.tar.gz` |
+| Windows | `mbyte_0.1.0_windows_amd64.zip` | `mbyte_0.1.0_windows_arm64.zip` |
+
+Kali / Linux（amd64）の例 — ダウンロード → チェックサム検証 → 展開 → PATH へ:
+
+```bash
+VER=0.1.0
+BASE="https://github.com/Akira0412-degitech/Mbyte/releases/download/v${VER}"
+
+# バイナリとチェックサムを取得
+curl -fsSLO "${BASE}/mbyte_${VER}_linux_amd64.tar.gz"
+curl -fsSLO "${BASE}/checksums.txt"
+
+# SHA-256 を検証（OK: "mbyte_0.1.0_linux_amd64.tar.gz: OK" と出る）
+sha256sum --ignore-missing -c checksums.txt
+
+# 展開して PATH の通った場所へ
+tar xzf "mbyte_${VER}_linux_amd64.tar.gz"
+sudo install -m 0755 mbyte /usr/local/bin/mbyte
+mbyte --version
+```
+
+Windows は `.zip` を展開し、`mbyte.exe` を PATH の通ったフォルダに置いてください
+（検証は PowerShell の `Get-FileHash mbyte_0.1.0_windows_amd64.zip -Algorithm SHA256` で `checksums.txt` と突き合わせます）。
+
 ### `go install`（Go ツールチェインがある場合）
 
 ```bash
@@ -42,16 +76,11 @@ go install github.com/Akira0412-degitech/Mbyte/cmd/mbyte@latest
 
 `mbyte` バイナリが `$(go env GOPATH)/bin` に入ります（PATH を通してください）。
 
-### リリースバイナリをダウンロード
-
-[GitHub Releases](https://github.com/Akira0412-degitech/Mbyte/releases) から各 OS/アーキテクチャ向けの
-アーカイブ（Linux / macOS / Windows、amd64 / arm64）を取得し、`mbyte`（Windows は `mbyte.exe`）を
-PATH の通ったディレクトリに置くだけで動きます。
-
 ### ソースからビルド
 
 ```bash
-cd go
+git clone https://github.com/Akira0412-degitech/Mbyte.git
+cd Mbyte/go
 go build -o mbyte ./cmd/mbyte
 ```
 
@@ -96,20 +125,24 @@ mbyte --list-presets
 
 ### 実行例
 
+以下はリポジトリ同梱のサンプル `shell.php`（Web シェル文字列を含む無害なテキスト）を使った、
+そのままコピペで動く例です。クローン直後のリポジトリルートで実行してください
+（`mbyte` が PATH にない場合は `./go/mbyte` のようにパスを指定）。
+
 プリセットを使って PNG ヘッダを先頭に追加：
 
 ```bash
-mbyte insert --preset png payload.bin -o payload.png
+mbyte insert --preset png shell.php -o demo.png
 ```
 
 成功すると、判定フォーマットと先頭 16 バイトの hexdump が標準出力に、構造チェック結果が
 標準エラーに表示されます：
 
 ```
-[+] wrote payload.png
+[+] wrote demo.png
 [+] detected format: PNG image data
-00000000: 89 50 4e 47 0d 0a 1a 0a 70 61 79 6c 6f 61 64 00  .PNG....payload.
-[check] structure: FAIL (unexpected EOF)
+00000000: 89 50 4e 47 0d 0a 1a 0a ff fe 3c 00 3f 00 70 00  .PNG......<.?.p.
+[check] structure: FAIL (png: invalid format: Bad chunk length: 4294851584)
 ```
 
 > 上の `[check] structure: FAIL` は意図どおりです。PNG シグネチャを付けただけでは正規の PNG には
@@ -118,35 +151,41 @@ mbyte insert --preset png payload.bin -o payload.png
 生の 16 進で任意のシグネチャを追加：
 
 ```bash
-mbyte insert --hex 89504e470d0a1a0a notes.txt -o notes.png.txt
+mbyte insert --hex 89504e470d0a1a0a shell.php -o demo.png.php
 ```
 
-先頭バイトを JPEG シグネチャで置換：
+先頭バイトを JPEG シグネチャで置換（`demo.png` は上の例で作ったファイル）：
 
 ```bash
-mbyte replace --preset jpeg upload.dat -o upload.jpg
+mbyte replace --preset jpeg demo.png -o demo.jpg
 ```
 
 書き込み前に変更内容とペイロードハッシュを確認（書き込みなし）：
 
 ```bash
-mbyte replace --preset jpeg upload.dat -o upload.jpg --dry-run
+mbyte replace --preset jpeg demo.png -o demo.jpg --dry-run
 ```
 
 ```
-[preview] input    : upload.dat (12345 bytes)
-[preview] current signature : 474946383961 ("GIF image data, version 89a", 6 bytes)
+[preview] input    : demo.png (74 bytes)
+[preview] current signature : 89504e470d0a1a0a ("PNG image data", 8 bytes)
 [preview] new signature     : ffd8ffe0 ("JPEG image data", 4 bytes)
-[preview] payload hash (before)           : 9f86d0...
-[preview] payload hash (after, estimated) : 9f86d0... [MATCH]
-[preview] output   : upload.jpg (12343 bytes, -2 bytes)
+[preview] payload hash (before)           : 69009c...
+[preview] payload hash (after, estimated) : 69009c... [MATCH]
+[preview] output   : demo.jpg (70 bytes, -4 bytes)
 [*] dry-run: no file written
 ```
 
-ディレクトリ内の全ファイルへ一括適用（結果を JSON で）：
+確認プロンプトを出さずに実行（スクリプト向け）：
 
 ```bash
-mbyte insert --preset png ./uploads -o ./out --recursive --json
+mbyte insert --preset png shell.php -o demo.png -y
+```
+
+ディレクトリ内の全ファイルへ一括適用（再帰、結果を JSON で）：
+
+```bash
+mbyte insert --preset png ./some_dir -o ./out --recursive --json
 ```
 
 ### `replace`: 署名境界検出と `--raw`
@@ -184,14 +223,17 @@ mbyte replace --preset png broken.png -o fixed.png --raw
 `detect_format`（先頭シグネチャの判定）と、Go 標準ライブラリのデコーダによる **実際のパース** を
 1 レポートにまとめます。「署名が一致する」ことと「その形式として本当に妥当」なことの違いが分かります。
 
+リポジトリ同梱の `shell.png.php`（`insert --preset png shell.php` で作られる、PNG 署名付きの
+サンプル）で試せます：
+
 ```bash
-mbyte check shell.png
+mbyte check shell.png.php
 ```
 
 ```
-file: shell.png
+file: shell.png.php
 [signature] PNG image data (matched 8 bytes)
-[structure] FAIL (png: invalid format ...)
+[structure] FAIL (png: invalid format: Bad chunk length: 4294851584)
 ```
 
 - 対応フォーマット: PNG / JPEG / GIF（`image/*`）、ZIP（`archive/zip`）、ELF / PE（`debug/elf` / `debug/pe`）。
@@ -269,6 +311,12 @@ error: could not recognize the current file's signature, so there is no safe spl
   the signature, so a `replace` onto a JPEG may not touch that 4th byte. (The
   `jpeg` preset itself still writes the full 4-byte `ffd8ffe0` on insert.)
 - **BMP は検出専用** で、insert プリセットとしては公開していません。
+
+> **Go 版での改善点:** 元の Python 版は「先頭シグネチャの判定」までで、ファイルが実際にその形式として
+> デコードできるかは確認できませんでした。Go 版では標準ライブラリのデコーダを使った**構造検証**
+> （`check` サブコマンドと、insert / replace 後の自動チェック）を追加し、「署名が一致する」ことと
+> 「本当にパースできる」ことの差を実証できるようにしています。ただしこれも完全な妥当性検証ではなく、
+> 未対応フォーマットは `SKIP` になる点に注意してください。
 
 ---
 
