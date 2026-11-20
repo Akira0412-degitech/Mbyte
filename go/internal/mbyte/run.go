@@ -197,6 +197,14 @@ func (p *preview) writePreview(w io.Writer) {
 // (case-insensitive) proceeds; the default is No.
 func confirm(r io.Reader, w io.Writer, output string) bool {
 	fmt.Fprintf(w, "[?] proceed and write %s? [y/N]: ", output)
+	return readYes(r)
+}
+
+// readYes reads one line and reports whether it is an affirmative ("y"/"yes",
+// case-insensitive). Anything else, or EOF, is treated as No. Shared by the
+// insert/replace confirm and the Step 9 update confirm so the y/N semantics
+// stay identical.
+func readYes(r io.Reader) bool {
 	line, _ := bufio.NewReader(r).ReadString('\n')
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "y", "yes":
