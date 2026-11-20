@@ -113,37 +113,19 @@ func newUpdateCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			checkOnly, _ := cmd.Flags().GetBool("check")
+			assumeYes, _ := cmd.Flags().GetBool("yes")
 
-			tag, _, err := mbyte.LatestRelease(cmd.Context(), nil, "")
-			if err != nil {
-				return err
+			streams := mbyte.IO{
+				Out:         cmd.OutOrStdout(),
+				Err:         cmd.ErrOrStderr(),
+				In:          cmd.InOrStdin(),
+				Interactive: isTerminal(os.Stdin),
 			}
-			hasUpdate, err := mbyte.CheckUpdate(version, tag)
-			if err != nil {
-				return err
-			}
-
-			out := cmd.OutOrStdout()
-			if hasUpdate {
-				fmt.Fprintf(out, "update available: %s (current v%s)\n", tag, version)
-			} else {
-				fmt.Fprintf(out, "mbyte v%s is the latest release\n", version)
-			}
-
-			if !checkOnly {
-				// US-5.2 (download + self-replace) is not implemented yet; be
-				// explicit rather than silently doing nothing surprising.
-				fmt.Fprintln(cmd.ErrOrStderr(),
-					"[*] self-replace is not available yet; re-download from the releases page, "+
-						"or use 'mbyte update --check' to check only.")
-			}
-			return nil
+			return mbyte.RunUpdate(cmd.Context(), streams, mbyte.UpdateConfig{}, version, checkOnly, assumeYes)
 		},
 	}
 	cmd.Flags().Bool("check", false, "only check and report; do not download or replace anything")
-	// Reserved for US-5.2 (skip the confirmation prompt); accepted now so the
-	// flag's meaning stays stable once self-replace lands.
-	cmd.Flags().BoolP("yes", "y", false, "skip the confirmation prompt (reserved for self-replace)")
+	cmd.Flags().BoolP("yes", "y", false, "skip the confirmation prompt (assume yes)")
 	return cmd
 }
 
