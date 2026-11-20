@@ -195,3 +195,65 @@
 - Step 1〜3は**この順番を守る**(署名テーブルの設計がStep4〜6の土台になるため)。
 - Step 4(ハッシュ比較)とStep 6(polyglot検証)は目的が違う: 4は「元データが変わっていないか」、6は「変換後のデータが対象フォーマットとして正しいか」。両方実装して初めて「このツールは何を保証していて、何を保証していないか」をユーザーに正確に伝えられる。
 - 各StepのDoDを満たしてから次のStepに進むこと。特にStep1はテストなしで次に進まない。
+
+
+---
+
+## Step 9: self-update機能(US-5.1, US-5.2, US-5.3)
+
+**目的**: `mbyte update`で最新バージョンの確認・取得・自己置き換えができるようにする。
+
+**やること**:
+1. **方針確認ポイント(実装前に必ず相談)**: 自己更新のバイナリ置き換えを
+   標準ライブラリだけで手実装するか、既存の自己更新ライブラリ
+   (例: `minio/selfupdate`, `creativeprojects/go-selfupdate`)を依存に
+   追加するかを提示して確認を取る。CLAUDE.mdの「依存ライブラリを無断で
+   追加・変更しない」ルールに該当するため。
+2. `internal/mbyte/update.go` を新設:
+   - `LatestRelease() (tag string, assets []Asset, err error)`:
+     `https://api.github.com/repos/<owner>/<repo>/releases/latest` を叩き、
+     tag_nameとasset一覧(name, browser_download_url)を返す。
+   - `CheckUpdate() (current, latest string, hasUpdate bool, err error)`:
+     現在の`version`定数と比較。
+   - `ApplyUpdate(asset Asset) error`: アセットをダウンロード→
+     `checksums.txt`と照合→一時ファイルに展開→`os.Executable()`で
+     現在の実行パスを取得→一時ファイルを目的の場所に`os.Rename`
+     (検証失敗時は一切ファイルを変更しない)。
+3. `cmd/mbyte/main.go` に `update` サブコマンドを追加。
+   `--check`(確認のみ)、`-y`/`--yes`(確認プロンプトスキップ)を持つ。
+   確認プロンプトは`run.go`の既存`confirm`関数を再利用する。
+4. GOOS/GOARCHに応じたアセット名の解決(goreleaserの命名規則
+   `mbyte_<version>_<os>_<arch>.tar.gz`/`.zip`に合わせる)。
+
+**完了条件**:
+- `mbyte update --check` が、ネットワークがある環境で現在/最新バージョンを
+  正しく表示する。
+- 実際に古いバージョンのバイナリに対して`mbyte update`を実行し、
+  最新バイナリに置き換わって`mbyte --version`が更新後の値を返すことを
+  Linux上で確認する(Windows/macOSでの動作確認は環境がある時に追加で行う)。
+- checksum検証を意図的に失敗させた場合、既存のバイナリが変更されない
+  ことを確認する。
+
+**注意**: 実行中の自分自身を書き換える処理なので、他のStepより慎重に
+テストする。特に「ダウンロード失敗」「checksum不一致」「書き込み権限なし」
+の異常系で、既存バイナリが壊れないことを最優先で確認する。
+
+---
+
+## 付録: README多言語化(EPIC外、ドキュメント整備タスク)
+
+**目的**: README.mdを英語メインにし、日本語版を別ファイルに分離する。
+
+**やること**:
+1. 現在の`README.md`(日本語)の内容を`README.ja.md`にコピー。
+2. `README.md`を英語で書き直す(内容は`README.ja.md`と同等)。
+3. 両ファイルの冒頭に言語切り替えリンクを追加:
+   - `README.md`: `**English** | [日本語](README.ja.md)`
+   - `README.ja.md`: `[English](README.md) | **日本語**`
+4. GitHubのリポジトリトップは`README.md`(英語)が表示される
+   (GitHubの仕様上、`README.md`が優先される)。
+
+**完了条件**: 両ファイルの内容が一致していて(翻訳として)、
+相互リンクで行き来できる。既存の日本語ユーザー(自分)が
+困らないよう、`README.ja.md`の内容は今の`README.md`から
+そのまま翻訳元として保持する。
