@@ -95,7 +95,56 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newActionCmd("insert", "prepend magic bytes (keeps original content)", false))
 	root.AddCommand(newActionCmd("replace", "overwrite the first N bytes with magic bytes", true))
 	root.AddCommand(newCheckCmd())
+	root.AddCommand(newUpdateCmd())
 	return root
+}
+
+// newUpdateCmd builds the `update` subcommand (Step 9). For now only the
+// US-5.1 "--check" path is wired: it queries the GitHub Releases API and
+// reports whether a newer version exists, without touching the binary. The
+// actual self-replace (US-5.2) is intentionally not implemented yet; running
+// `update` without --check reports that and exits without changing anything.
+func newUpdateCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "update",
+		Short:         "check for a newer mbyte release (self-replace not yet enabled)",
+		Args:          cobra.NoArgs,
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			checkOnly, _ := cmd.Flags().GetBool("check")
+
+			tag, _, err := mbyte.LatestRelease(cmd.Context(), nil, "")
+			if err != nil {
+				return err
+			}
+			hasUpdate, err := mbyte.CheckUpdate(version, tag)
+			if err != nil {
+				return err
+			}
+
+			out := cmd.OutOrStdout()
+			if hasUpdate {
+				fmt.Fprintf(out, "update available: %s (current v%s)\n", tag, version)
+			} else {
+				fmt.Fprintf(out, "mbyte v%s is the latest release\n", version)
+			}
+
+			if !checkOnly {
+				// US-5.2 (download + self-replace) is not implemented yet; be
+				// explicit rather than silently doing nothing surprising.
+				fmt.Fprintln(cmd.ErrOrStderr(),
+					"[*] self-replace is not available yet; re-download from the releases page, "+
+						"or use 'mbyte update --check' to check only.")
+			}
+			return nil
+		},
+	}
+	cmd.Flags().Bool("check", false, "only check and report; do not download or replace anything")
+	// Reserved for US-5.2 (skip the confirmation prompt); accepted now so the
+	// flag's meaning stays stable once self-replace lands.
+	cmd.Flags().BoolP("yes", "y", false, "skip the confirmation prompt (reserved for self-replace)")
+	return cmd
 }
 
 // newCheckCmd builds the `check` subcommand: report the signature match and the
