@@ -9,3 +9,7 @@ dist/
 
 # Go build temp (redirected GOTMPDIR to avoid temp-dir exec policy)
 .gotmp/
+
+# Go compiled binaries (e.g. `cd go && go build -o mbyte ./cmd/mbyte`)
+/go/mbyte
+/go/mbyte.exe
